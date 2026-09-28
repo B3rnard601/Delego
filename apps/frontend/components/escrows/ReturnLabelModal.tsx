@@ -30,17 +30,14 @@ export function ReturnLabelModal({
   const panelRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [copied, setCopied] = useState(false);
-  useFocusTrap(panelRef, isOpen);
+  const [copyError, setCopyError] = useState(false);
+  useFocusTrap({ containerRef: panelRef, isActive: isOpen, onEscape: onClose });
 
   useEffect(() => {
     if (!isOpen) return;
     setCopied(false);
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [isOpen, onClose]);
+    setCopyError(false);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!copied) return;
