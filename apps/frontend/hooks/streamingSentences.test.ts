@@ -79,6 +79,16 @@ describe("segmentSentences", () => {
       'He said "approved".',
       "Next.",
     ]);
+    // Here the closing quote follows the full stop, so it has to be pulled
+    // back into the sentence rather than left dangling at the start of the next
+    // one.
+    expect(completed('He said "done." Next.')).toEqual([
+      'He said "done."',
+      "Next.",
+    ]);
+    expect(
+      segmentSentences("Receipt attached [see invoice.] Done.").sentences
+    ).toEqual(["Receipt attached [see invoice.]", "Done."]);
   });
 
   it("withholds a boundary when the following word is lowercase", () => {
@@ -112,6 +122,16 @@ describe("segmentSentences", () => {
     // the shorter remainder that stays buffered.
     const rejoined = result.sentences.join(" ");
     expect(result.rest ? `${rejoined} ${result.rest}` : rejoined).toBe(runOn);
+  });
+
+  it("force-splits a space-free run-on without slicing from the end", () => {
+    // A streamed base64 blob or URL has no spaces to break on, so the split
+    // has to fall back to a hard character cut rather than `lastIndexOf(-1)`.
+    const blob = "x".repeat(700);
+    const result = segmentSentences(blob);
+    expect(result.sentences).toHaveLength(2);
+    expect(result.sentences[0]).toHaveLength(320);
+    expect(result.sentences.join("") + result.rest).toBe(blob);
   });
 
   it("ignores whitespace-only and empty buffers", () => {

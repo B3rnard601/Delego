@@ -225,6 +225,21 @@ describe("useStreamingAnnouncer", () => {
     expect(region().textContent).toBe("");
   });
 
+  it("ignores an empty token and stays idle", async () => {
+    render(<Harness onReady={(a) => (api = a)} />);
+
+    await act(async () => {
+      api?.appendToken("");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(INTERVAL * 2);
+    });
+
+    expect(api?.isStreaming).toBe(false);
+    expect(region().textContent).toBe("");
+  });
+
   it("reset discards buffered and queued text", async () => {
     render(<Harness onReady={(a) => (api = a)} />);
 
