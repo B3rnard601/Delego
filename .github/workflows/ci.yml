@@ -65,6 +65,9 @@ jobs:
       - name: Check microcopy consistency
         run: pnpm --filter @delegolabs/web check:microcopy
 
+      - name: Check Subresource Integrity (SRI)
+        run: pnpm --filter @delegolabs/web check:sri
+
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
