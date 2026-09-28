@@ -9,6 +9,10 @@ import {
 } from "../lib/demoMode";
 import { useNotifications } from "./useNotifications";
 import { useAnnounce } from "./useAnnounce";
+import {
+  WALLET_CANCELLED_MESSAGE,
+  isUserDeclined,
+} from "../services/wallet";
 
 export type WalletConnectionStatus =
   | "checking"
@@ -268,6 +272,12 @@ export function useWallet() {
       const freighter = await import("@stellar/freighter-api");
       const access = await freighter.requestAccess();
       if (access.error || !access.address) {
+        if (isUserDeclined(access.error)) {
+          updateWalletState({ ...initialState, status: "disconnected" });
+          setToast(WALLET_CANCELLED_MESSAGE);
+          announceRef.current?.(WALLET_CANCELLED_MESSAGE);
+          return;
+        }
         setState((prev) => ({
           ...prev,
           status: "error",
@@ -285,6 +295,12 @@ export function useWallet() {
         error: null,
       });
     } catch (err) {
+      if (isUserDeclined(err)) {
+        updateWalletState({ ...initialState, status: "disconnected" });
+        setToast(WALLET_CANCELLED_MESSAGE);
+        announceRef.current?.(WALLET_CANCELLED_MESSAGE);
+        return;
+      }
       setState((prev) => ({
         ...prev,
         status: "unavailable",
