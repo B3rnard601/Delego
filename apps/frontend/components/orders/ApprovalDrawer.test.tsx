@@ -49,6 +49,11 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 }
 
 describe("ApprovalDrawer", () => {
+  // The drawer also renders YieldEscrowToggle's checkbox, so the price-advisory
+  // acknowledgement has to be addressed by name.
+  const priceAckCheckbox = () =>
+    screen.getByRole("checkbox", { name: /reviewed the pricing/ });
+
   beforeEach(() => {
     window.sessionStorage.clear();
     mockUseApprovalNoteCapability.mockReturnValue(false);
@@ -450,7 +455,7 @@ describe("ApprovalDrawer", () => {
     const approve = screen.getByRole("button", { name: "Approve" });
     expect(approve).toBeDisabled();
 
-    await user.click(screen.getByRole("checkbox", { name: PRICING_ACK }));
+    await user.click(priceAckCheckbox());
     expect(approve).toBeEnabled();
     await user.click(approve);
     expect(onApprove).toHaveBeenCalledWith("order-1");
@@ -471,7 +476,7 @@ describe("ApprovalDrawer", () => {
         onClose={vi.fn()}
       />
     );
-    fireEvent.click(screen.getByRole("checkbox", { name: PRICING_ACK }));
+    fireEvent.click(priceAckCheckbox());
     unmount();
 
     // A different above-range order opened later this session: no re-tick needed.
@@ -485,9 +490,7 @@ describe("ApprovalDrawer", () => {
       />
     );
     expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
-    expect(
-      screen.getByRole("checkbox", { name: PRICING_ACK })
-    ).toBeChecked();
+    expect(priceAckCheckbox()).toBeChecked();
   });
 
   it("traps focus inside the dialog while open", () => {
