@@ -62,6 +62,7 @@ export {
   type PathPaymentQuote,
   type LiquidityPoolReserves,
 } from "./PathPaymentWidget.js";
+export { Icon, type IconProps } from "./Icon.js";
 export {
   PathPaymentSlippageSlider,
   calculateMinimumReceivedAmount,

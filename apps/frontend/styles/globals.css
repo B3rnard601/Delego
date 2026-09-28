@@ -232,10 +232,6 @@ html[data-underline-links="true"] a {
 
 body {
   margin: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    sans-serif;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
 }
@@ -2739,6 +2735,7 @@ body {
   justify-content: center;
   width: 2rem;
   height: 2rem;
+  aspect-ratio: 1/1;
   border-radius: 50%;
   background: var(--color-accent-bg);
   color: var(--color-accent);

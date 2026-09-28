@@ -13,7 +13,14 @@ import { AgentLiveStatusBanner } from "../components/layout/AgentLiveStatusBanne
 import { TestnetFaucetBanner } from "../components/network/TestnetFaucetBanner";
 import { UpdatePromptToast } from "../components/pwa/UpdatePromptToast";
 import { themeBootstrapScript } from "../hooks/useTheme";
+import { Inter } from "next/font/google";
 import { a11yBootstrapScript } from "../hooks/useAccessibility";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  fallback: ["system-ui", "-apple-system", "sans-serif"],
+});
 
 export const metadata: Metadata = {
   title: {
@@ -63,7 +70,7 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: a11yBootstrapScript }} />
       </head>
 
-      <body>
+      <body className={inter.className}>
         <StrictMode>
           <NextIntlClientProvider locale={locale} messages={messages}>
             <AppProviders>
