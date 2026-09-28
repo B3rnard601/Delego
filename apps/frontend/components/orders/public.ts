@@ -40,3 +40,9 @@ export {
 export type { 
   TaxEnabledCheckoutFlowProps 
 } from "./TaxEnabledCheckoutFlow";
+export { ExpenseReportExportModal } from "./ExpenseReportExportModal";
+export type { ExpenseReportExportModalProps } from "./ExpenseReportExportModal";
+export { TaxBreakdownPanel } from "./TaxBreakdownPanel";
+export type { TaxBreakdownPanelProps } from "./TaxBreakdownPanel";
+export { BiometricApprovalPrompt } from "./BiometricApprovalPrompt";
+export type { BiometricPromptProps } from "./BiometricApprovalPrompt";

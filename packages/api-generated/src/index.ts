@@ -112,32 +112,15 @@ export type RejectOrderResponse = ApiResponse<Order>;
 // ---------------------------------------------------------------------------
 //
 // The generated `Order` uses string dates and string-encoded bigint stroops.
-// The existing domain `Order` uses `Date` and `bigint` natively.
+// The existing @delegolabs/types `Order` uses `Date` and `bigint` natively.
 // The adapter functions below are the seam between the generated API layer
 // and the existing application models so consumers don't need to know about
 // the serialisation difference.
+//
+// When @delegolabs/types is updated to match the API shapes, these adapters
+// can be removed and call sites can consume the generated types directly.
 
-// Domain types (with native Date/bigint)
-export interface DomainLineItem {
-  productId: string;
-  quantity: number;
-  unitPriceStroops: bigint;
-}
-
-export interface DomainOrder {
-  id: string;
-  userId: string;
-  delegationId: string;
-  merchantId: string;
-  status: OrderStatus;
-  totalStroops: bigint;
-  lineItems: DomainLineItem[];
-  escrowContractId: string | null;
-  rejectionReason?: RejectionReasonCode | null | undefined;
-  rejectionNote?: string | null | undefined;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import type { Order as DomainOrder, OrderStatus as DomainOrderStatus } from "@delegolabs/types";
 
 function parseStroops(value: Stroops | undefined | null): bigint {
   if (value == null) return 0n;
@@ -154,7 +137,7 @@ export function adaptOrder(raw: Order): DomainOrder {
     userId: raw.userId,
     delegationId: raw.delegationId,
     merchantId: raw.merchantId,
-    status: raw.status,
+    status: raw.status as DomainOrderStatus,
     totalStroops: parseStroops(raw.totalStroops),
     lineItems: raw.lineItems.map((li) => ({
       productId: li.productId,

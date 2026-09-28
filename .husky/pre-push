@@ -2,13 +2,11 @@ echo "🚀 Running pre-push checks..."
 
 # Type check
 echo "▸ Running TypeScript type check..."
-# Temporarily disabled due to extensive missing type definitions
-# pnpm run typecheck
-# if [ $? -ne 0 ]; then
-#   echo "❌ Type check failed. Please fix TypeScript errors before pushing."
-#   exit 1
-# fi
-echo "⚠️  TypeScript typecheck temporarily disabled - fixing in next PR"
+pnpm run typecheck
+if [ $? -ne 0 ]; then
+  echo "❌ Type check failed. Please fix TypeScript errors before pushing."
+  exit 1
+fi
 
 # Linting
 echo "▸ Running ESLint..."

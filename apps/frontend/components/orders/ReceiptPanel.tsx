@@ -10,13 +10,16 @@ import {
   receiptFilename,
   receiptSubtotalStroops,
 } from "../../lib/receipts";
+import { computeTaxBreakdown } from "../../lib/taxBreakdown";
+import { TaxBreakdownPanel } from "./TaxBreakdownPanel";
 import { orderStatusLabel } from "../../lib/orders";
-import { TaxSummaryRow } from "./TaxBreakdownDisplay";
 
 export interface ReceiptPanelProps {
   order: Order;
-  /** Delivery postal code for tax calculation. If provided, shows tax breakdown in receipt. */
-  deliveryPostalCode?: string;
+  /** ISO country code used to resolve the sales tax / VAT rate. */
+  jurisdictionCode?: string;
+  /** Order category, e.g. "digital" to zero-rate the breakdown. */
+  category?: string;
 }
 
 function formatTimestamp(value?: Date | string | null): string {
@@ -31,10 +34,16 @@ function formatTimestamp(value?: Date | string | null): string {
  * cleanly on its own for `@media print`, and offers a raw JSON download for
  * bookkeeping/expense-reporting integrations.
  */
-export function ReceiptPanel({ order, deliveryPostalCode }: ReceiptPanelProps) {
+export function ReceiptPanel({ order, jurisdictionCode, category }: ReceiptPanelProps) {
   const { currencyId, rate } = useCurrency();
   const subtotal = receiptSubtotalStroops(order);
   const fee = receiptFeeStroops(order);
+  const tax = computeTaxBreakdown({
+    subtotalStroops: subtotal,
+    networkFeeStroops: fee,
+    category: category ?? (order as { category?: string | null }).category,
+    jurisdictionCode,
+  });
 
   const handleDownload = () => {
     const record = buildReceiptRecord(order);
@@ -133,17 +142,18 @@ export function ReceiptPanel({ order, deliveryPostalCode }: ReceiptPanelProps) {
           <span>Fees</span>
           <Amount stroops={fee} currency={currencyId} xlmUsdRate={rate?.xlmUsdRate} />
         </div>
-        {deliveryPostalCode && (
-          <TaxSummaryRow
-            subtotalStroops={subtotal}
-            postalCode={deliveryPostalCode}
-          />
-        )}
         <div className="receipt-totals-row receipt-totals-total">
           <span>Total</span>
           <strong>
             <Amount stroops={order.totalStroops} currency={currencyId} xlmUsdRate={rate?.xlmUsdRate} />
           </strong>
+        </div>
+        <div className="receipt-totals-row no-print">
+          <TaxBreakdownPanel
+            breakdown={tax}
+            networkFeeStroops={fee.toString()}
+            variant="receipt"
+          />
         </div>
       </div>
     </Card>
