@@ -11,9 +11,12 @@ import {
   receiptSubtotalStroops,
 } from "../../lib/receipts";
 import { orderStatusLabel } from "../../lib/orders";
+import { TaxSummaryRow } from "./TaxBreakdownDisplay";
 
 export interface ReceiptPanelProps {
   order: Order;
+  /** Delivery postal code for tax calculation. If provided, shows tax breakdown in receipt. */
+  deliveryPostalCode?: string;
 }
 
 function formatTimestamp(value?: Date | string | null): string {
@@ -28,7 +31,7 @@ function formatTimestamp(value?: Date | string | null): string {
  * cleanly on its own for `@media print`, and offers a raw JSON download for
  * bookkeeping/expense-reporting integrations.
  */
-export function ReceiptPanel({ order }: ReceiptPanelProps) {
+export function ReceiptPanel({ order, deliveryPostalCode }: ReceiptPanelProps) {
   const { currencyId, rate } = useCurrency();
   const subtotal = receiptSubtotalStroops(order);
   const fee = receiptFeeStroops(order);
@@ -130,6 +133,12 @@ export function ReceiptPanel({ order }: ReceiptPanelProps) {
           <span>Fees</span>
           <Amount stroops={fee} currency={currencyId} xlmUsdRate={rate?.xlmUsdRate} />
         </div>
+        {deliveryPostalCode && (
+          <TaxSummaryRow
+            subtotalStroops={subtotal}
+            postalCode={deliveryPostalCode}
+          />
+        )}
         <div className="receipt-totals-row receipt-totals-total">
           <span>Total</span>
           <strong>

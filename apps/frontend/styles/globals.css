@@ -3594,3 +3594,254 @@ body {
   padding: 0;
   font-size: 0.8125rem;
 }
+/* ---------------------------------------------------------------------------
+   Tax Breakdown Display (Automated Sales Tax and VAT)
+--------------------------------------------------------------------------- */
+
+.tax-breakdown {
+  margin: 1rem 0;
+}
+
+.tax-breakdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tax-breakdown-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.tax-breakdown-jurisdiction {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.tax-breakdown-rate {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.tax-breakdown-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tax-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.tax-breakdown-label {
+  font-size: 0.9375rem;
+  color: var(--color-text-primary);
+}
+
+.tax-breakdown-rate-inline {
+  color: var(--color-text-muted);
+  font-weight: normal;
+}
+
+.tax-breakdown-tax-line {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--color-bg-subtle);
+}
+
+.tax-breakdown-total {
+  padding: 0.75rem 0 0.5rem 0;
+  border-top: 2px solid var(--color-border);
+  font-weight: 600;
+}
+
+.tax-breakdown-no-tax {
+  padding: 1rem;
+  text-align: center;
+  background: var(--color-bg-subtle);
+  border-radius: 0.5rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.tax-breakdown-estimate-note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: 0.5rem;
+}
+
+.tax-breakdown-estimate-text {
+  font-size: 0.875rem;
+  color: var(--color-warning-text);
+}
+
+.tax-breakdown-compact {
+  padding: 0.25rem 0;
+}
+
+/* Tax Summary Row (for receipt totals integration) */
+.tax-summary-row .tax-rate-inline {
+  color: var(--color-text-muted);
+  font-weight: normal;
+}
+
+/* Tax Aware Total */
+.tax-aware-total .tax-inclusive-note {
+  font-size: 0.75rem;
+  font-weight: normal;
+  color: var(--color-text-muted);
+  margin-left: 0.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .tax-breakdown-header {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .tax-breakdown-jurisdiction {
+    align-items: flex-start;
+    flex-direction: row;
+    gap: 0.75rem;
+  }
+  
+  .tax-breakdown-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .tax-breakdown-row > span:last-child {
+    align-self: flex-end;
+  }
+}
+
+/* Print styles */
+@media print {
+  .tax-breakdown {
+    break-inside: avoid;
+  }
+  
+  .tax-breakdown-estimate-note {
+    background: transparent !important;
+    border: 1px solid #000 !important;
+  }
+}
+
+/* High contrast mode adjustments */
+[data-high-contrast="true"] .tax-breakdown-estimate-note {
+  border-color: #000;
+}
+
+[data-high-contrast="true"] .tax-breakdown-no-tax {
+  background: #f0f0f0;
+  border: 1px solid #000;
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .tax-breakdown-estimate-note {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+}
+
+/* ---------------------------------------------------------------------------
+   Tax-Enabled Checkout Flow
+--------------------------------------------------------------------------- */
+
+.tax-enabled-checkout {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.checkout-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.checkout-step {
+  position: relative;
+}
+
+.checkout-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  bottom: -0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 0.5rem;
+  background: var(--color-border);
+}
+
+.tax-preview-mode {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.checkout-receipt {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+/* Approval card tax section */
+.approval-tax-section {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--color-bg-subtle);
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+}
+
+.approval-tax-section .tax-breakdown-title {
+  color: var(--color-text-primary);
+  margin-bottom: 1rem;
+}
+
+/* Integration with existing approval card styles */
+.approval-card .approval-tax-section {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .tax-enabled-checkout {
+    padding: 0 1rem;
+  }
+  
+  .checkout-steps {
+    gap: 1rem;
+  }
+  
+  .checkout-step::after {
+    display: none;
+  }
+}
+
+/* Print styles for tax-enabled receipts */
+@media print {
+  .tax-enabled-checkout .checkout-step:not(.receipt-panel) {
+    display: none !important;
+  }
+  
+  .approval-tax-section {
+    break-inside: avoid;
+  }
+}
