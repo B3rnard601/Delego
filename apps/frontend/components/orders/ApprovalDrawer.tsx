@@ -101,7 +101,9 @@ export function ApprovalDrawer({
     () => new Set()
   );
 
-  useFocusTrap(panelRef, isOpen);
+  // Escape closes the drawer; the trap restores focus to whatever opened it
+  // (#752) instead of leaving it stranded on the unmounted panel.
+  useFocusTrap({ containerRef: panelRef, isActive: isOpen, onEscape: onClose });
 
   // Price advisory (#571): summarize the payload's comparable-range hints, if
   // any, into one non-blocking strip. Never fabricated — `null` when the
@@ -133,15 +135,6 @@ export function ApprovalDrawer({
     setYieldTimeoutDays(7);
     setBiometricProof(null);
   }, [order?.id]);
-
-  useEffect(() => {
-    if (!order) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [order, onClose]);
 
   if (!order) return null;
 

@@ -8,24 +8,36 @@ landmarks (see `apps/frontend/styles/globals.css`).
 ## Modal / drawer / popover pattern
 
 Every overlay that traps user attention (`MobileNav`, `NotificationCenter`,
-and any future dialog) must:
+`ApprovalDrawer`, `DisputeResponseDrawer`, and any future dialog) must:
 
 1. Render with `role="dialog"` and `aria-modal="true"`, plus an
-   `aria-label` or `aria-labelledby` naming the overlay.
+   `aria-label` or `aria-labelledby` naming the overlay. Exactly one element
+   carries the role — put it on the panel, not on a wrapper that also contains
+   the backdrop.
 2. Use [`useFocusTrap`](../apps/frontend/hooks/useFocusTrap.ts) to move
    initial focus into the overlay on open, cycle Tab/Shift+Tab within it,
    and restore focus to the triggering element on close.
-3. Close on `Escape` (see `MobileNav`'s keydown handler, or the
-   outside-click/Escape handling in `NotificationBell` for popovers anchored
-   to a trigger button).
+3. Close on `Escape` — pass `onEscape` to the trap rather than adding a
+   separate `document` keydown listener (see `MobileNav` for the
+   outside-click/Escape handling in `NotificationBell`, which closes a popover
+   anchored to a trigger button).
 4. Lock body scroll while open if the overlay covers the viewport (see
    `MobileNav`).
 
-`useFocusTrap(containerRef, active)` is the shared primitive — pass a ref to
-the dialog/panel element and whether it's currently open. It no-ops when
-`active` is `false`, so it's safe to call unconditionally in components that
-render their panel conditionally (`NotificationCenter`, mounted only while
-open) or keep it always mounted and toggle visibility (`MobileNav`).
+`useFocusTrap({ containerRef, isActive, onEscape })` is the shared primitive —
+pass a ref to the dialog/panel element, whether it's currently open, and
+optionally a close callback. It no-ops when `isActive` is `false`, so it's safe
+to call unconditionally in components that render their panel conditionally
+(`NotificationCenter`, mounted only while open) or keep it always mounted and
+toggle visibility (`MobileNav`).
+
+The trap owns every `Tab` keypress rather than only the ones at the edges of
+its cycle, because the browser's sequential focus order is document-wide: a
+positive `tabindex` on background content sorts ahead of the drawer's own
+controls and would otherwise pull focus onto the page behind the backdrop.
+Elements removed from the accessibility tree (`[hidden]`, `aria-hidden`,
+`inert`, `visibility: hidden`, disabled form controls) are excluded from the
+cycle, so focus never lands where the user cannot see it.
 
 ## Announcement vocabulary
 
