@@ -18,6 +18,7 @@ import { DataSaverSettingsCard } from "../../components/settings/DataSaverSettin
 import { LanguageSwitcher } from "../../components/settings/LanguageSwitcher";
 import { CurrencySwitcher } from "../../components/settings/CurrencySwitcher";
 import { TimeFormatSwitcher } from "../../components/settings/TimeFormatSwitcher";
+import { ChatAudioSettingsCard } from "../../components/settings/ChatAudioSettingsCard";
 import { NetworkContractsCard } from "../../components/settings/NetworkContractsCard";
 import { OfflineDataCard } from "../../components/settings/OfflineDataCard";
 import { PrivacyExportCard } from "../../components/settings/PrivacyExportCard";
@@ -103,6 +104,7 @@ export default function SettingsPage() {
       <LanguageSwitcher />
       <CurrencySwitcher />
       <TimeFormatSwitcher />
+      <ChatAudioSettingsCard />
       <NetworkContractsCard />
       <AgentSettingsCard config={PLACEHOLDER_AGENT_CONFIG} />
       <MerchantWebhookCard />
