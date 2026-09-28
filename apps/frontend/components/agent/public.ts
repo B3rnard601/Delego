@@ -1,12 +1,13 @@
 /**
- * Public API barrel for the conversational-agent feature.
+ * Public API barrel for the agent feature.
  * Other features may only import agent components via this file.
  */
-export {
-  VoiceInputButton,
-  type VoiceInputButtonProps,
-} from "./VoiceInputButton";
-export {
-  AgentChatDrawer,
-  type AgentChatDrawerProps,
-} from "./AgentChatDrawer";
+export { AgentMemoryTable } from "./AgentMemoryTable";
+export type { AgentMemoryTableProps } from "./AgentMemoryTable";
+export { VoiceInputButton } from "./VoiceInputButton";
+export type { VoiceInputButtonProps } from "./VoiceInputButton";
+export { QuoteComparisonDrawer } from "./QuoteComparisonDrawer";
+export type { QuoteComparisonDrawerProps } from "./QuoteComparisonDrawer";
+export { AgentChatDrawer } from "./AgentChatDrawer";
+export type { AgentChatDrawerProps } from "./AgentChatDrawer";
+

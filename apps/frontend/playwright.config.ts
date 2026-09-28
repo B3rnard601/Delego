@@ -1,4 +1,34 @@
 import { defineConfig, devices } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+/**
+ * `grepInvert` pattern naming every quarantined test (#630).
+ *
+ * Quarantined tests must not block the PR gate, but they do have to keep
+ * running somewhere or nobody will ever fix them — the nightly full-suite run
+ * sets `PLAYWRIGHT_INCLUDE_QUARANTINE=1` to re-include them. A missing or
+ * unreadable registry degrades to `undefined` (nothing excluded) rather than
+ * taking the whole suite down.
+ */
+function quarantineGrepInvert(): RegExp | undefined {
+  if (process.env.PLAYWRIGHT_INCLUDE_QUARANTINE === "1") return undefined;
+
+  try {
+    const raw = readFileSync(path.resolve(__dirname, "quarantine.json"), "utf8");
+    const titles: string[] = (JSON.parse(raw).quarantined ?? [])
+      .map((entry: { title?: string }) => entry.title)
+      .filter((title: unknown): title is string => typeof title === "string" && title.length > 0);
+
+    if (titles.length === 0) return undefined;
+
+    return new RegExp(
+      titles.map((title) => title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")
+    );
+  } catch {
+    return undefined;
+  }
+}
 
 export default defineConfig({
   testDir: "./e2e",
@@ -6,6 +36,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "list",
+  // Quarantined flakes stay out of the PR gate (#630).
+  grepInvert: quarantineGrepInvert(),
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3001",
     trace: "on-first-retry",
@@ -24,6 +56,12 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", testIgnore: /visual\//, use: { ...devices["Desktop Chrome"] } },
+    {
+      // Mobile viewport for the nightly desktop/mobile × theme matrix (#630).
+      name: "mobile-chrome",
+      testIgnore: /visual\//,
+      use: { ...devices["Pixel 7"] },
+    },
     {
       name: "visual",
       testDir: "./e2e/visual",

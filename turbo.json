@@ -34,6 +34,9 @@
     "check:drift": {
       "outputs": []
     },
+    "check:sri": {
+      "outputs": []
+    },
     "dev": {
       "cache": false,
       "persistent": true

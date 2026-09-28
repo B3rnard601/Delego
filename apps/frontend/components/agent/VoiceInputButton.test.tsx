@@ -1,76 +1,89 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { VoiceInputButton } from "./VoiceInputButton";
+import type { SpeechRecognitionLike } from "../../hooks/useVoiceInput";
 
-class FakeRecognition {
+let instance: FakeRecognition | null = null;
+
+class FakeRecognition implements SpeechRecognitionLike {
+  lang = "";
   continuous = false;
   interimResults = false;
-  lang = "";
-  onresult: ((event: unknown) => void) | null = null;
-  onerror: ((event: unknown) => void) | null = null;
-  onend: (() => void) | null = null;
+  onresult: SpeechRecognitionLike["onresult"] = null;
+  onerror: SpeechRecognitionLike["onerror"] = null;
+  onend: SpeechRecognitionLike["onend"] = null;
   start = vi.fn();
-  stop = vi.fn();
+  stop = vi.fn(() => this.onend?.());
   abort = vi.fn();
-
-  emit(transcript: string) {
-    this.onresult?.({
-      resultIndex: 0,
-      results: [[{ transcript, confidence: 1 }]],
-    });
+  constructor() {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    instance = this;
   }
 }
 
-let instance: FakeRecognition;
+function speak(text: string, isFinal: boolean) {
+  const result = Object.assign([{ transcript: text }], { isFinal });
+  act(() => instance!.onresult?.({ resultIndex: 0, results: [result] }));
+}
 
-beforeEach(() => {
-  instance = new FakeRecognition();
-  (window as unknown as Record<string, unknown>).SpeechRecognition = vi.fn(
-    () => instance
-  );
-});
+function setRecognition(ctor: unknown) {
+  (window as unknown as Record<string, unknown>).SpeechRecognition = ctor;
+}
 
 afterEach(() => {
   delete (window as unknown as Record<string, unknown>).SpeechRecognition;
-  vi.restoreAllMocks();
+  instance = null;
 });
 
 describe("VoiceInputButton", () => {
-  it("renders a microphone button that becomes available once mounted", async () => {
+  it("is disabled with a tooltip when the browser lacks Web Speech", () => {
     render(<VoiceInputButton onTranscript={vi.fn()} />);
-    await waitFor(() =>
-      expect(screen.getByRole("button")).toBeEnabled()
-    );
-    expect(screen.getByRole("button")).toHaveAccessibleName(/voice input/i);
+    const button = screen.getByRole("button", { name: "Start voice input" });
+    const tooltip = screen.getByRole("tooltip", { hidden: true });
+    expect(button).toBeDisabled();
+    expect(tooltip).toHaveTextContent(/isn't supported/);
+    expect(button).toHaveAttribute("aria-describedby", tooltip.id);
   });
 
-  it("toggles recording and emits the transcript to the caller", async () => {
-    const user = userEvent.setup();
+  it("listens, animates a waveform and injects the final transcript", () => {
+    setRecognition(FakeRecognition);
     const onTranscript = vi.fn();
     render(<VoiceInputButton onTranscript={onTranscript} />);
 
-    const button = screen.getByRole("button");
-    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Start voice input" }));
+    expect(instance!.start).toHaveBeenCalled();
+    expect(screen.getByTestId("voice-waveform")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Stop voice input" })
+    ).toHaveAttribute("aria-pressed", "true");
 
-    await user.click(button);
+    speak("buy running", false);
+    expect(screen.getByRole("status")).toHaveTextContent("buy running");
+    expect(onTranscript).not.toHaveBeenCalled();
 
-    expect(button).toHaveAttribute("aria-pressed", "true");
-    expect(button).toHaveClass("is-listening");
+    speak("buy running shoes size 42", true);
+    expect(onTranscript).toHaveBeenCalledWith("buy running shoes size 42");
 
-    act(() => instance.emit("order coffee"));
-
-    expect(onTranscript).toHaveBeenCalledWith("order coffee");
-
-    await user.click(button);
-
-    expect(button).toHaveAttribute("aria-pressed", "false");
-    expect(instance.stop).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Stop voice input" }));
+    expect(screen.queryByTestId("voice-waveform")).not.toBeInTheDocument();
   });
 
-  it("is disabled when the browser has no speech recognition support", async () => {
-    delete (window as unknown as Record<string, unknown>).SpeechRecognition;
+  it("does nothing when disabled by the caller", () => {
+    setRecognition(FakeRecognition);
+    render(<VoiceInputButton onTranscript={vi.fn()} disabled />);
+    expect(
+      screen.getByRole("button", { name: "Start voice input" })
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("tooltip", { hidden: true })
+    ).not.toBeInTheDocument();
+  });
+
+  it("surfaces recognition errors", () => {
+    setRecognition(FakeRecognition);
     render(<VoiceInputButton onTranscript={vi.fn()} />);
-    expect(screen.getByRole("button")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Start voice input" }));
+    act(() => instance!.onerror?.({ error: "not-allowed" }));
+    expect(screen.getByRole("status")).toHaveTextContent(/denied/);
   });
 });
