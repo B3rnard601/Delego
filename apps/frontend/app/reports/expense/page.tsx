@@ -14,7 +14,7 @@ import {
   expenseReportToCsv,
   expenseReportToJson,
   type ExpenseReportFilter,
-} from "../../../lib/expenseReport";
+} from "../../../lib/expenseReportBuilder";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

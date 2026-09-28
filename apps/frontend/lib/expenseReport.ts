@@ -1,208 +1,346 @@
-import type { Order } from "@delegolabs/types";
+/**
+ * Custom CSV / JSON expense-report builder (#722).
+ *
+ * Everything here is client-side: the caller passes the orders it already
+ * has in memory and gets back a file to download. No request is made, so
+ * nothing about the account leaves the browser beyond the user's own save.
+ *
+ * Security: merchant-supplied text (merchant name, category, tx hash) is
+ * attacker-influenced data. A CSV cell that starts with `=`, `+`, `-`, `@`,
+ * TAB or CR is interpreted as a *formula* by Excel, Sheets and LibreOffice,
+ * which can leak the rest of the sheet or issue outbound requests. Every
+ * cell therefore goes through `sanitizeCsvCell` before serialisation — see
+ * `apps/frontend/lib/expenseReport.test.ts`.
+ */
+
 import { toCsv } from "./csv";
+import { downloadBlob } from "./download";
 
-/**
- * Custom expense reports for corporate buyers (#793): filter orders by date
- * range, category, and merchant, then export the rows as CSV or JSON. All
- * computation is client-side from the orders already loaded via useOrders,
- * so no new endpoint is required.
- */
+const STROOPS_PER_XLM = 10_000_000n;
 
-export interface ExpenseReportFilter {
-  startDate: Date;
-  endDate: Date;
-  categories: string[];
-  format: "csv" | "json";
-  /** Optional merchant restriction; omitted/empty means all merchants. */
-  merchants?: string[];
-}
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface ExpenseReportRow {
-  orderId: string;
-  date: string;
-  merchantId: string;
-  category: string;
-  status: string;
-  amountStroops: string;
-}
+export type ExportColumn =
+  | "orderId"
+  | "escrowId"
+  | "date"
+  | "merchant"
+  | "category"
+  | "amount"
+  | "txHash";
 
-export interface ExpenseReport {
+export type ExportFormat = "csv" | "json";
+
+export interface ExportReportConfig {
+  /** Inclusive start of the range, `YYYY-MM-DD`. */
   startDate: string;
+  /** Inclusive end of the range, `YYYY-MM-DD`. */
   endDate: string;
-  format: "csv" | "json";
-  categories: string[];
-  merchants: string[];
-  rows: ExpenseReportRow[];
-  totalStroops: bigint;
-  orderCount: number;
-}
-
-/** Category used when an order doesn't carry a category of its own. */
-export const UNCATEGORIZED = "Uncategorized";
-
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
+  format: ExportFormat;
+  columns: ExportColumn[];
+  filterCategory?: string;
 }
 
 /**
- * Resolves an order's category. Orders don't have a first-class category
- * field today, so fall back to the first line item's category and, failing
- * that, to `Uncategorized`.
+ * The subset of an order an expense report needs. Deliberately structural
+ * rather than the domain `Order` so the generator stays usable from the
+ * receipts/merchant views too.
  */
-export function orderCategory(order: Order): string {
-  const candidate = (order as { category?: unknown }).category;
-  if (typeof candidate === "string" && candidate.trim()) {
-    return candidate.trim();
-  }
-  const lineItems = (order as { lineItems?: unknown }).lineItems;
-  if (Array.isArray(lineItems)) {
-    for (const item of lineItems) {
-      const category = (item as { category?: unknown })?.category;
-      if (typeof category === "string" && category.trim()) {
-        return category.trim();
-      }
-    }
-  }
-  return UNCATEGORIZED;
+export interface ExportableOrder {
+  id: string;
+  escrowId?: string | null;
+  merchantId?: string;
+  category?: string | null;
+  totalStroops?: bigint | string | number | null;
+  txHash?: string | null;
+  createdAt: Date | string;
 }
 
-/** Merchant identifier shown in the report and used for merchant filtering. */
-export function orderMerchant(order: Order): string {
-  const order2 = order as { merchantId?: unknown; merchantName?: unknown };
-  if (typeof order2.merchantId === "string" && order2.merchantId) {
-    return order2.merchantId;
-  }
-  if (typeof order2.merchantName === "string" && order2.merchantName) {
-    return order2.merchantName;
-  }
-  return "Unknown merchant";
+/** One fully-shaped report line: values are already ordered to match `columns`. */
+export type ExpenseReportRow = string[];
+
+export interface ExpenseReportFile {
+  filename: string;
+  content: string;
+  mimeType: string;
+  rowCount: number;
 }
 
-function uniqueSorted(values: Iterable<string>): string[] {
-  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
-}
+// ─── Column metadata ─────────────────────────────────────────────────────────
 
-/** Distinct categories present in the order list, for the filter UI. */
-export function availableCategories(orders: Order[]): string[] {
-  return uniqueSorted(orders.map(orderCategory));
-}
+export const EXPORT_COLUMNS: ExportColumn[] = [
+  "orderId",
+  "escrowId",
+  "date",
+  "merchant",
+  "category",
+  "amount",
+  "txHash",
+];
 
-/** Distinct merchants present in the order list, for the filter UI. */
-export function availableMerchants(orders: Order[]): string[] {
-  return uniqueSorted(orders.map(orderMerchant));
-}
+export const EXPORT_COLUMN_LABELS: Record<ExportColumn, string> = {
+  orderId: "Order ID",
+  escrowId: "Escrow ID",
+  date: "Date",
+  merchant: "Merchant",
+  category: "Category",
+  amount: "Amount (XLM)",
+  txHash: "Transaction hash",
+};
 
-/**
- * Filters orders into an expense report. Date bounds are inclusive of the
- * whole start/end days; empty category/merchant selections mean "all".
- */
-export function buildExpenseReport(
-  orders: Order[],
-  filter: ExpenseReportFilter
-): ExpenseReport {
-  const rangeStart = startOfDay(filter.startDate).getTime();
-  const rangeEnd = endOfDay(filter.endDate).getTime();
-  const categories = new Set(filter.categories);
-  const merchants = new Set(filter.merchants ?? []);
+export const EXPORT_FORMATS: ExportFormat[] = ["csv", "json"];
 
-  const rows: ExpenseReportRow[] = orders
-    .filter((order) => {
-      const createdAt = new Date(order.createdAt).getTime();
-      if (
-        Number.isNaN(createdAt) ||
-        createdAt < rangeStart ||
-        createdAt > rangeEnd
-      ) {
-        return false;
-      }
-      if (categories.size > 0 && !categories.has(orderCategory(order))) {
-        return false;
-      }
-      if (merchants.size > 0 && !merchants.has(orderMerchant(order))) {
-        return false;
-      }
-      return true;
-    })
-    .map((order) => ({
-      orderId: order.id,
-      date: new Date(order.createdAt).toISOString(),
-      merchantId: orderMerchant(order),
-      category: orderCategory(order),
-      status: order.status,
-      amountStroops: BigInt(order.totalStroops ?? 0).toString(),
-    }))
-    .sort((a, b) => b.date.localeCompare(a.date));
-
-  const totalStroops = rows.reduce(
-    (sum, row) => sum + BigInt(row.amountStroops),
-    0n
-  );
-
+export function defaultExportReportConfig(): ExportReportConfig {
+  const today = new Date();
+  const yearAgo = new Date(today);
+  yearAgo.setFullYear(yearAgo.getFullYear() - 1);
   return {
-    startDate: startOfDay(filter.startDate).toISOString(),
-    endDate: endOfDay(filter.endDate).toISOString(),
-    format: filter.format,
-    categories: uniqueSorted(categories),
-    merchants: uniqueSorted(merchants),
-    rows,
-    totalStroops,
-    orderCount: rows.length,
+    startDate: toDayKey(yearAgo),
+    endDate: toDayKey(today),
+    format: "csv",
+    columns: [...EXPORT_COLUMNS],
   };
 }
 
-/** Serializes a report as an RFC 4180 CSV document. */
-export function expenseReportToCsv(report: ExpenseReport): string {
-  const header = [
-    "Order",
-    "Date",
-    "Merchant",
-    "Category",
-    "Status",
-    "Amount (stroops)",
-  ];
-  const rows = report.rows.map((row) => [
-    row.orderId,
-    row.date,
-    row.merchantId,
-    row.category,
-    row.status,
-    row.amountStroops,
-  ]);
-  return toCsv(header, rows);
+// ─── Validation ──────────────────────────────────────────────────────────────
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+function isDayKey(value: string): boolean {
+  if (!DAY_KEY.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && toDayKey(parsed) === value;
 }
 
-/** Serializes a report as JSON (stroops as strings to preserve precision). */
-export function expenseReportToJson(report: ExpenseReport): string {
-  return JSON.stringify(
-    {
-      generatedAt: new Date().toISOString(),
-      startDate: report.startDate,
-      endDate: report.endDate,
-      categories: report.categories,
-      merchants: report.merchants,
-      totalStroops: report.totalStroops.toString(),
-      orderCount: report.orderCount,
-      rows: report.rows,
-    },
-    null,
-    2
+/**
+ * Returns a human-readable problem with `config`, or null when it is
+ * exportable. Every message is written to be shown verbatim next to the
+ * "Download" button.
+ */
+export function validateExportConfig(config: ExportReportConfig): string | null {
+  if (!isDayKey(config.startDate) || !isDayKey(config.endDate)) {
+    return "Choose a valid start and end date.";
+  }
+  if (config.startDate > config.endDate) {
+    return "The start date must be on or before the end date.";
+  }
+  if (config.columns.length === 0) {
+    return "Select at least one column to export.";
+  }
+  return null;
+}
+
+// ─── Sanitisation ────────────────────────────────────────────────────────────
+
+/**
+ * Neutralises spreadsheet formula injection.
+ *
+ * A leading `=`, `+`, `-` or `@` makes Excel/Sheets/LibreOffice treat the
+ * cell as a formula; a leading TAB or CR is stripped by some importers and
+ * re-introduces the same problem. Prefixing with an apostrophe forces the
+ * cell to be read as text.
+ *
+ * Only genuinely dangerous values are touched — RFC 4180 quoting of commas,
+ * quotes and newlines is `toCsv`'s job, so an ordinary "Acme, Inc." merchant
+ * name stays readable in the exported file.
+ */
+export function sanitizeCsvCell(value: string): string {
+  if (value.length === 0) return value;
+  const stripped = value.replace(/^[\t\r\n]+/, "");
+  const first = stripped.charAt(0);
+  const dangerous =
+    first === "=" || first === "+" || first === "-" || first === "@";
+  return dangerous ? `'${stripped}` : value;
+}
+
+// ─── Value formatting ────────────────────────────────────────────────────────
+
+/** `YYYY-MM-DD` in UTC — the same day boundary for every user, so exports are comparable. */
+export function toDayKey(value: Date | string): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+/** Full ISO-8601 timestamp for the `date` column; empty when unparseable. */
+function toIsoString(value: Date | string): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+/** Parses a stroops value (bigint, numeric string, or number) into a bigint, or null when unusable. */
+export function parseStroops(
+  value: bigint | string | number | null | undefined
+): bigint | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "bigint") return value;
+  const trimmed = String(value).trim();
+  return /^\d+$/.test(trimmed) ? BigInt(trimmed) : null;
+}
+
+/**
+ * Exact stroops → XLM string, trailing zeros trimmed but never rounded, so
+ * a report reconciles to the ledger to the last stroop.
+ */
+export function stroopsToXlm(value: bigint | string | number): string {
+  const stroops = parseStroops(value);
+  if (stroops === null) return "";
+  const whole = stroops / STROOPS_PER_XLM;
+  const fraction = (stroops % STROOPS_PER_XLM).toString().padStart(7, "0");
+  const trimmedFraction = fraction.replace(/0+$/, "");
+  return trimmedFraction ? `${whole}.${trimmedFraction}` : whole.toString();
+}
+
+// ─── Row building ────────────────────────────────────────────────────────────
+
+/** True when `order` falls inside the inclusive day range of `config`. */
+export function isWithinDateRange(
+  order: ExportableOrder,
+  config: Pick<ExportReportConfig, "startDate" | "endDate">
+): boolean {
+  const day = toDayKey(order.createdAt);
+  if (!day) return false;
+  return day >= config.startDate && day <= config.endDate;
+}
+
+/** Applies the date range and optional category filter, preserving input order. */
+export function selectReportableOrders<T extends ExportableOrder>(
+  orders: T[],
+  config: ExportReportConfig
+): T[] {
+  const category = config.filterCategory?.trim().toLowerCase();
+  return orders.filter((order) => {
+    if (!isWithinDateRange(order, config)) return false;
+    if (!category) return true;
+    return (order.category ?? "").trim().toLowerCase() === category;
+  });
+}
+
+/** Cell value for one order/column pair. */
+export function cellValue(order: ExportableOrder, column: ExportColumn): string {
+  switch (column) {
+    case "orderId":
+      return order.id ?? "";
+    case "escrowId":
+      return order.escrowId ?? "";
+    case "date":
+      return toIsoString(order.createdAt);
+    case "merchant":
+      return order.merchantId ?? "";
+    case "category":
+      return order.category ?? "";
+    case "amount": {
+      const stroops = parseStroops(order.totalStroops);
+      return stroops === null ? "" : stroopsToXlm(stroops);
+    }
+    case "txHash":
+      return order.txHash ?? "";
+    default:
+      return "";
+  }
+}
+
+/**
+ * De-duplicates and drops unknown columns while preserving the canonical
+ * `EXPORT_COLUMNS` order, so a header row always lines up with its values
+ * no matter how the checkbox list was toggled.
+ */
+export function normalizeColumns(columns: ExportColumn[]): ExportColumn[] {
+  const selected = new Set(columns);
+  return EXPORT_COLUMNS.filter((column) => selected.has(column));
+}
+
+/** Maps orders to report rows in canonical column order. */
+export function toReportRows(
+  orders: ExportableOrder[],
+  columns: ExportColumn[]
+): ExpenseReportRow[] {
+  const normalized = normalizeColumns(columns);
+  return orders.map((order) =>
+    normalized.map((column) => sanitizeCsvCell(cellValue(order, column)))
   );
 }
 
-/** Suggested download filename, e.g. `delego-expense-report-2026-01-31.csv`. */
-export function expenseReportFilename(
-  report: ExpenseReport,
-  format: "csv" | "json" = report.format,
-  now: Date = new Date()
+// ─── Serialisation ───────────────────────────────────────────────────────────
+
+export function buildExpenseReportCsv(
+  rows: ExpenseReportRow[],
+  columns: ExportColumn[]
 ): string {
-  const stamp = now.toISOString().slice(0, 10);
-  return `delego-expense-report-${stamp}.${format}`;
+  const header = normalizeColumns(columns).map((c) => EXPORT_COLUMN_LABELS[c]);
+  return toCsv(header, rows);
+}
+
+export interface ExpenseReportJson {
+  generatedAt: string;
+  config: Omit<ExportReportConfig, "columns"> & { columns: ExportColumn[] };
+  columnLabels: string[];
+  rowCount: number;
+  rows: Record<string, string>[];
+}
+
+export function buildExpenseReportJson(
+  rows: ExpenseReportRow[],
+  config: ExportReportConfig
+): string {
+  const normalized = normalizeColumns(config.columns);
+  const payload: ExpenseReportJson = {
+    generatedAt: new Date().toISOString(),
+    config: { ...config, columns: normalized },
+    columnLabels: normalized.map((c) => EXPORT_COLUMN_LABELS[c]),
+    rowCount: rows.length,
+    rows: rows.map((row) => {
+      const record: Record<string, string> = {};
+      normalized.forEach((column, index) => {
+        record[column] = row[index] ?? "";
+      });
+      return record;
+    }),
+  };
+  return `${JSON.stringify(payload, null, 2)}\n`;
+}
+
+/** `delego-expenses-2026-01-01-to-2026-03-31.csv` */
+export function expenseReportFilename(config: ExportReportConfig): string {
+  const extension = config.format === "json" ? "json" : "csv";
+  return `delego-expenses-${config.startDate}-to-${config.endDate}.${extension}`;
+}
+
+/**
+ * Serialises `orders` according to `config`. Throws when the config is not
+ * exportable so a misconfigured UI can never produce a malformed file —
+ * callers should run `validateExportConfig` first.
+ */
+export function buildExpenseReport(
+  orders: ExportableOrder[],
+  config: ExportReportConfig
+): ExpenseReportFile {
+  const error = validateExportConfig(config);
+  if (error) throw new Error(error);
+
+  const selected = selectReportableOrders(orders, config);
+  const rows = toReportRows(selected, config.columns);
+
+  return {
+    filename: expenseReportFilename(config),
+    content:
+      config.format === "json"
+        ? buildExpenseReportJson(rows, config)
+        : buildExpenseReportCsv(rows, config.columns),
+    mimeType: config.format === "json" ? "application/json" : "text/csv;charset=utf-8;",
+    rowCount: rows.length,
+  };
+}
+
+/** Builds the report and hands it to the browser as a download. */
+export function downloadExpenseReport(
+  orders: ExportableOrder[],
+  config: ExportReportConfig
+): ExpenseReportFile {
+  const file = buildExpenseReport(orders, config);
+  downloadBlob(
+    file.filename,
+    new Blob([file.content], { type: file.mimeType })
+  );
+  return file;
 }
