@@ -2,7 +2,7 @@ import { DelegoClient } from "@delegolabs/sdk";
 import { env } from "./env";
 import { isDemoMode } from "./demoMode";
 import { apiFetch } from "./apiFetch";
-import type { PurchaseProposal } from "../sdk-types";
+import type { PurchaseProposal } from "../types/proposal";
 
 /** Thrown when a mutating request is attempted while demo mode is active. */
 export class DemoModeWriteBlockedError extends Error {

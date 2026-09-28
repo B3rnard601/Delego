@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { PurchaseProposalCard } from "./PurchaseProposalCard";
-import type { PurchaseProposal } from "../../sdk-types";
+import type { PurchaseProposal } from "../../types/proposal";
 
 // ── Mock hooks ────────────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ describe("PurchaseProposalCard — display", () => {
 
   it("renders the merchant address shortened", () => {
     renderCard();
-    expect(screen.getByText(/GCSV4…/)).toBeInTheDocument();
+    expect(screen.getByText(/GCSV4E…/)).toBeInTheDocument();
   });
 
   it("renders the Approve button", () => {

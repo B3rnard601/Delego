@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Amount, Badge, Button, Card } from "@delegolabs/ui";
-import type { PurchaseProposal, PurchaseProposalCardProps } from "../../sdk-types";
+import type { PurchaseProposal, PurchaseProposalCardProps } from "../../types/proposal";
 import { useNow } from "../../hooks/useNow";
 import {
   useDemoModeGuard,
