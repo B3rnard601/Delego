@@ -1,70 +1,166 @@
-import type { ComponentProps } from "react";
-import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { PathPaymentWidget, type PathPaymentEstimate } from "./PathPaymentWidget.js";
+import { describe, expect, it, vi } from "vitest";
+import { PathPaymentWidget, type PathPaymentQuote, type PathPaymentEstimate } from "./PathPaymentWidget.js";
 
-const estimate: PathPaymentEstimate = {
-  sourceAsset: "XLM",
-  destinationAsset: "USDC",
-  sourceAmountMax: "105.5",
-  destinationAmount: "100",
-  estimatedRate: "0.948",
-  slippageTolerancePercent: 0.4,
-  path: ["USD"],
+const mockQuote: PathPaymentQuote = {
+  sourceToken: "XLM",
+  sourceAmount: "50.2500000",
+  destinationToken: "USDC",
+  destinationAmount: "10.0000000",
+  estimatedPriceImpactPercent: 2.5,
+  slippageTolerancePercent: 0.5,
 };
 
-function renderWidget(overrides: Partial<ComponentProps<typeof PathPaymentWidget>> = {}) {
-  return render(
-    <PathPaymentWidget
-      sourceAssetOptions={["XLM", "USDC"]}
-      destinationAsset="USDC"
-      destinationAmount="100"
-      sourceAsset="XLM"
-      onSourceAssetChange={() => {}}
-      estimate={estimate}
-      {...overrides}
-    />
-  );
-}
+const mockEstimate: PathPaymentEstimate = {
+  sourceAsset: "XLM",
+  destinationAsset: "USDC",
+  sourceAmountMax: "50.2500000",
+  destinationAmount: "10.0000000",
+  estimatedRate: "0.2000000",
+  slippageTolerancePercent: 0.5,
+  path: ["AQUA"],
+};
 
 describe("PathPaymentWidget", () => {
-  it("renders the source-asset picker and the escrow requirement", () => {
-    renderWidget();
-    expect(screen.getByLabelText("Pay with")).toBeDefined();
-    expect(screen.getByRole("option", { name: "XLM" })).toBeDefined();
-    expect(screen.getByRole("option", { name: "USDC" })).toBeDefined();
-    expect(screen.getByText("100 USDC")).toBeDefined();
+  it("renders source asset selector and required escrow amount", () => {
+    render(
+      <PathPaymentWidget
+        sourceAssetOptions={["XLM", "EURC", "USDC"]}
+        destinationAsset="USDC"
+        destinationAmount="10.0000000"
+        sourceAsset="XLM"
+        onSourceAssetChange={vi.fn()}
+        quote={mockQuote}
+      />
+    );
+
+    expect(screen.getByLabelText(/pay with/i)).toBeInTheDocument();
+    expect(screen.getByText("Escrow requires")).toBeInTheDocument();
+    expect(screen.getByText("10.0000000 USDC")).toBeInTheDocument();
   });
 
-  it("shows a loading message instead of a quote while fetching", () => {
-    renderWidget({ loading: true });
-    expect(screen.getByText("Fetching live quote…")).toBeDefined();
-    expect(screen.queryByText("You pay (max)")).toBeNull();
+  it("renders interactive slippage slider, presets, and price impact warning for PathPaymentQuote", () => {
+    render(
+      <PathPaymentWidget
+        sourceAssetOptions={["XLM", "USDC"]}
+        destinationAsset="USDC"
+        destinationAmount="10.0000000"
+        sourceAsset="XLM"
+        onSourceAssetChange={vi.fn()}
+        quote={mockQuote}
+      />
+    );
+
+    // Slippage slider and presets
+    expect(screen.getByText("Slippage Tolerance")).toBeInTheDocument();
+    expect(screen.getByTestId("preset-0.1")).toBeInTheDocument();
+    expect(screen.getByTestId("preset-0.5")).toBeInTheDocument();
+    expect(screen.getByTestId("preset-1")).toBeInTheDocument();
+
+    // Prominent price impact warning since estimatedPriceImpactPercent is 2.5% (> 2.0%)
+    expect(screen.getByTestId("price-impact-warning")).toBeInTheDocument();
+    expect(screen.getByText(/High Price Impact Warning/i)).toBeInTheDocument();
   });
 
-  it("renders the live quote with amount, rate and route", () => {
-    renderWidget();
-    expect(screen.getByText("105.5 XLM")).toBeDefined();
-    expect(screen.getByText(/1 XLM ≈ 0.948 USDC/)).toBeDefined();
-    expect(screen.getByText("XLM → USD → USDC")).toBeDefined();
+  it("updates slippage dynamically and triggers callback", async () => {
+    const user = userEvent.setup();
+    const handleSlippageChange = vi.fn();
+
+    render(
+      <PathPaymentWidget
+        sourceAssetOptions={["XLM", "USDC"]}
+        destinationAsset="USDC"
+        destinationAmount="10.0000000"
+        sourceAsset="XLM"
+        onSourceAssetChange={vi.fn()}
+        quote={mockQuote}
+        onSlippageChange={handleSlippageChange}
+      />
+    );
+
+    // Click 1% preset
+    await user.click(screen.getByTestId("preset-1"));
+
+    expect(handleSlippageChange).toHaveBeenCalledWith(1);
+    expect(screen.getByTestId("current-slippage-badge")).toHaveTextContent("1%");
+  });
+
+  it("supports backwards-compatible PathPaymentEstimate with route and rate", () => {
+    render(
+      <PathPaymentWidget
+        sourceAssetOptions={["XLM", "USDC"]}
+        destinationAsset="USDC"
+        destinationAmount="10.0000000"
+        sourceAsset="XLM"
+        onSourceAssetChange={vi.fn()}
+        estimate={mockEstimate}
+      />
+    );
+
+    expect(screen.getByText(/1 XLM ≈ 0.2000000 USDC/i)).toBeInTheDocument();
+    expect(screen.getByText("XLM → AQUA → USDC")).toBeInTheDocument();
+  });
+
+  it("renders loading message when loading is true", () => {
+    render(
+      <PathPaymentWidget
+        sourceAssetOptions={["XLM", "USDC"]}
+        destinationAsset="USDC"
+        destinationAmount="10.0000000"
+        sourceAsset="XLM"
+        onSourceAssetChange={vi.fn()}
+        loading={true}
+      />
+    );
+
+    expect(screen.getByText("Fetching live quote…")).toBeInTheDocument();
+  });
+
+  it("renders no-route alert when no estimate or quote exists for cross-asset pair", () => {
+    render(
+      <PathPaymentWidget
+        sourceAssetOptions={["XLM", "USDC"]}
+        destinationAsset="USDC"
+        destinationAmount="10.0000000"
+        sourceAsset="XLM"
+        onSourceAssetChange={vi.fn()}
+        estimate={null}
+        quote={null}
+      />
+    );
+
+    expect(
+      screen.getByText("No path payment route available for XLM → USDC.")
+    ).toBeInTheDocument();
   });
 
   it("omits the route row when the quote has no intermediate path", () => {
-    renderWidget({ estimate: { ...estimate, path: [] } });
-    expect(screen.queryByText("Route")).toBeNull();
-    expect(screen.getByText("105.5 XLM")).toBeDefined();
-  });
-
-  it("warns when no path payment route is available", () => {
-    renderWidget({ estimate: null });
-    expect(screen.getByRole("alert").textContent).toContain(
-      "No path payment route available for XLM → USDC."
+    render(
+      <PathPaymentWidget
+        sourceAssetOptions={["XLM", "USDC"]}
+        destinationAsset="USDC"
+        destinationAmount="10.0000000"
+        sourceAsset="XLM"
+        onSourceAssetChange={vi.fn()}
+        estimate={{ ...mockEstimate, path: [] }}
+      />
     );
+    expect(screen.queryByText("Route")).toBeNull();
+    expect(screen.getByText("50.2500000 XLM")).toBeDefined();
   });
 
   it("hides the quote and warnings when paying in the destination asset", () => {
-    renderWidget({ sourceAsset: "USDC" });
+    render(
+      <PathPaymentWidget
+        sourceAssetOptions={["XLM", "USDC"]}
+        destinationAsset="USDC"
+        destinationAmount="10.0000000"
+        sourceAsset="USDC"
+        onSourceAssetChange={vi.fn()}
+        estimate={mockEstimate}
+      />
+    );
     expect(screen.queryByText("You pay (max)")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -72,10 +168,16 @@ describe("PathPaymentWidget", () => {
   it("reports the chosen source asset and resets a dismissed warning", async () => {
     const user = userEvent.setup();
     const onSourceAssetChange = vi.fn();
-    renderWidget({
-      onSourceAssetChange,
-      estimate: { ...estimate, slippageTolerancePercent: 2.5 },
-    });
+    render(
+      <PathPaymentWidget
+        sourceAssetOptions={["XLM", "USDC"]}
+        destinationAsset="USDC"
+        destinationAmount="10.0000000"
+        sourceAsset="XLM"
+        onSourceAssetChange={onSourceAssetChange}
+        estimate={{ ...mockEstimate, slippageTolerancePercent: 2.5 }}
+      />
+    );
 
     expect(screen.getByRole("alert").textContent).toContain("Market slippage (2.5%)");
 
@@ -89,10 +191,17 @@ describe("PathPaymentWidget", () => {
   });
 
   it("honours a custom slippage warning threshold", () => {
-    renderWidget({
-      estimate: { ...estimate, slippageTolerancePercent: 1.0 },
-      slippageWarningThresholdPercent: 0.5,
-    });
+    render(
+      <PathPaymentWidget
+        sourceAssetOptions={["XLM", "USDC"]}
+        destinationAsset="USDC"
+        destinationAmount="10.0000000"
+        sourceAsset="XLM"
+        onSourceAssetChange={vi.fn()}
+        estimate={{ ...mockEstimate, slippageTolerancePercent: 1.0 }}
+        slippageWarningThresholdPercent={0.5}
+      />
+    );
     expect(screen.getByRole("alert").textContent).toContain("Market slippage (1%)");
   });
 });
