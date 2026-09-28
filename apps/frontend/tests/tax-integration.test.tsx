@@ -3,7 +3,7 @@
  * Tests the full workflow from postal code input to tax display in receipts.
  */
 
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import type { Order } from "@delegolabs/types";
 import { calculateTaxBreakdown } from "../lib/taxCalculation";
 import { enhanceOrderWithTax } from "../lib/taxEnhancedOrder";
@@ -342,10 +342,6 @@ describe("Tax Integration E2E", () => {
     });
 
     test("recalculation on postal code change is efficient", () => {
-      const order = createTestOrder([
-        { productId: "item", quantity: 1, price: 100 },
-      ]);
-
       const { rerender } = render(
         <TaxBreakdownDisplay
           subtotalStroops={BigInt("1000000000")}

@@ -3,8 +3,8 @@
  * Provides common mocks, fixtures, and test helpers.
  */
 
+import React from "react";
 import type { Order } from "@delegolabs/types";
-import type { TaxJurisdiction } from "../lib/taxCalculation";
 
 // ─── Test Data Fixtures ─────────────────────────────────────────────────────
 
@@ -186,7 +186,7 @@ export const mockUseCurrency = {
 };
 
 export const mockUIComponents = {
-  Amount: ({ stroops, currency }: { stroops: bigint; currency?: string }) => (
+  Amount: ({ stroops, currency: _currency }: { stroops: bigint; currency?: string }) => (
     <span data-testid="amount" data-stroops={stroops.toString()}>
       {stroopsToXlm(stroops).toFixed(2)} XLM
     </span>
@@ -319,7 +319,7 @@ export function checkTaxDisplayAccessibility(container: HTMLElement) {
   };
 }
 
-export default {
+const taxTestSetup = {
   TEST_ORDERS,
   TEST_POSTAL_CODES,
   EXPECTED_TAX_RATES,
@@ -335,3 +335,5 @@ export default {
   measureTaxCalculationPerformance,
   checkTaxDisplayAccessibility,
 };
+
+export default taxTestSetup;

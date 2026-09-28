@@ -49,11 +49,6 @@ export function TaxEnabledCheckoutFlow({
 
   // Calculate tax breakdown if postal code is provided
   const taxBreakdown = postalCode ? calculateTaxBreakdown(subtotal, postalCode) : null;
-  
-  // Enhanced order with postal code
-  const enhancedOrder = postalCode 
-    ? enhanceOrderWithTax(order, postalCode) 
-    : order as TaxEnhancedOrder;
 
   const handleApprove = async (orderId: string) => {
     setIsProcessing(true);

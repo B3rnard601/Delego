@@ -76,10 +76,10 @@ export function enhanceOrderWithTax(
  */
 export function extractBaseOrder(enhancedOrder: TaxEnhancedOrder): Order {
   const {
-    deliveryPostalCode,
-    billingPostalCode,
-    taxCalculationEnabled,
-    calculatedTax,
+    deliveryPostalCode: _deliveryPostalCode,
+    billingPostalCode: _billingPostalCode,
+    taxCalculationEnabled: _taxCalculationEnabled,
+    calculatedTax: _calculatedTax,
     ...baseOrder
   } = enhancedOrder;
   

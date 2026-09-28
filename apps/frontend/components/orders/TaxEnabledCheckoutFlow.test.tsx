@@ -5,7 +5,7 @@
 
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { Order } from "@delegolabs/types";
-import { TaxEnabledCheckoutFlow, useTaxEnabledOrder, TaxAwareApprovalCard } from "./TaxEnabledCheckoutFlow";
+import { TaxEnabledCheckoutFlow, TaxAwareApprovalCard } from "./TaxEnabledCheckoutFlow";
 
 // Mock dependencies
 jest.mock("../../hooks/useCurrency", () => ({

@@ -4,7 +4,7 @@
  */
 
 import { render, screen } from "@testing-library/react";
-import { TaxBreakdownDisplay, TaxSummaryRow, TaxAwareTotal, useTaxBreakdown } from "./TaxBreakdownDisplay";
+import { TaxBreakdownDisplay, TaxSummaryRow, TaxAwareTotal } from "./TaxBreakdownDisplay";
 
 // Mock the useCurrency hook
 jest.mock("../../hooks/useCurrency", () => ({

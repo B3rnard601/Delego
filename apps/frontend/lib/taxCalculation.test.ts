@@ -14,7 +14,6 @@ import {
   hasTaxObligation,
   getSupportedPostalCodes,
   type TaxBreakdown,
-  type TaxJurisdiction,
 } from "./taxCalculation";
 
 describe("taxCalculation", () => {
