@@ -60,4 +60,5 @@ export {
   type PathPaymentWidgetProps,
   type PathPaymentEstimate,
 } from "./PathPaymentWidget.js";
+export { Icon, type IconProps } from "./Icon.js";
 
