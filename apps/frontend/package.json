@@ -19,6 +19,7 @@
     "visual:update": "playwright test --project=visual --project=visual-mobile --update-snapshots",
     "analyze": "ANALYZE=true pnpm build",
     "check:perf-budget": "node scripts/check-perf-budget.mjs",
+    "check:no-sourcemaps": "node scripts/check-no-sourcemaps.mjs",
     "check:help-links": "node scripts/check-help-links.mjs",
     "seed:demo": "node scripts/seed-demo.mjs"
   },
