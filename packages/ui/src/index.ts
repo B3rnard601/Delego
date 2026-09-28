@@ -44,7 +44,7 @@ export {
 export {
   AgentTraceViewer,
   type AgentTraceViewerProps,
-  type AgentExecutionStep,
+  type AgentThoughtStep,
 } from "./AgentTraceViewer.js";
 export {
   PromptChipsBar,
@@ -77,4 +77,5 @@ export {
   type Currency,
 } from "./ProductCard.js";
 
-
+export { VerificationBadge, type VerificationBadgeProps } from "./VerificationBadge.js";
+export * from "./InteractiveTrackingTimeline.js";

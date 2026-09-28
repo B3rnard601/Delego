@@ -6,6 +6,7 @@ import {
   DEMO_WALLET_ADDRESS,
   DEMO_NETWORK,
 } from "../lib/demoMode";
+import { WALLET_CANCELLED_MESSAGE } from "../services/wallet";
 
 const {
   mockIsConnected,
@@ -13,7 +14,6 @@ const {
   mockGetAddress,
   mockGetNetwork,
   mockRequestAccess,
-  mockSignTransaction,
   mockOnAccountChange,
   mockOnNetworkChange,
   mockWatchWalletChanges,
@@ -23,7 +23,6 @@ const {
   mockGetAddress: vi.fn(),
   mockGetNetwork: vi.fn(),
   mockRequestAccess: vi.fn(),
-  mockSignTransaction: vi.fn(),
   mockOnAccountChange: vi.fn(),
   mockOnNetworkChange: vi.fn(),
   mockWatchWalletChanges: vi.fn(),
@@ -35,32 +34,11 @@ vi.mock("@stellar/freighter-api", () => ({
   getAddress: mockGetAddress,
   getNetwork: mockGetNetwork,
   requestAccess: mockRequestAccess,
-  signTransaction: mockSignTransaction,
   onAccountChange: mockOnAccountChange,
   onNetworkChange: mockOnNetworkChange,
   WatchWalletChanges: mockWatchWalletChanges,
   default: {},
 }));
-
-const SELECTION_KEY = "delego_selected_wallet";
-
-/** Answers the LOBSTR install probe instead of waiting out its 2s timeout. */
-function answerLobstrProbe(isConnected: boolean): void {
-  vi.spyOn(window, "postMessage").mockImplementation((message) => {
-    const req = message as { source?: string; messageId?: string; type?: string };
-    if (req?.source !== "LOBSTR_EXTERNAL_MSG_REQUEST") return;
-    if (req.type !== "REQUEST_CONNECTION_STATUS") return;
-    const event = new MessageEvent("message", {
-      data: {
-        source: "LOBSTR_EXTERNAL_MSG_RESPONSE",
-        messagedId: req.messageId,
-        isConnected,
-      },
-    });
-    Object.defineProperty(event, "source", { value: window });
-    window.dispatchEvent(event);
-  });
-}
 
 describe("useWallet", () => {
   beforeEach(() => {
@@ -70,12 +48,8 @@ describe("useWallet", () => {
     mockGetAddress.mockReset();
     mockGetNetwork.mockReset();
     mockRequestAccess.mockReset();
-    mockSignTransaction.mockReset();
     mockOnAccountChange.mockReset();
     mockOnNetworkChange.mockReset();
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    delete window.lobstrSignerExtension;
   });
 
   it("reports unavailable when the extension is not installed", async () => {
@@ -182,14 +156,33 @@ describe("useWallet", () => {
       expect(result.current.address).toBe("GXYZ789");
     });
 
-    it("reports an error when the user denies access", async () => {
+    it("treats a user decline as a cancellation, not an error (#743)", async () => {
       mockIsConnected.mockResolvedValue({ isConnected: false });
       const { result } = renderHook(() => useWallet());
       await waitFor(() => expect(result.current.status).toBe("unavailable"));
 
       mockRequestAccess.mockResolvedValue({
         address: null,
-        error: { message: "User declined access" },
+        error: { code: -4, message: "User declined to sign the transaction" },
+      });
+
+      await act(async () => {
+        await result.current.connect();
+      });
+
+      expect(result.current.status).toBe("disconnected");
+      expect(result.current.error).toBeNull();
+      expect(result.current.toast).toBe(WALLET_CANCELLED_MESSAGE);
+    });
+
+    it("still reports a real error when access fails for a non-decline reason", async () => {
+      mockIsConnected.mockResolvedValue({ isConnected: false });
+      const { result } = renderHook(() => useWallet());
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+
+      mockRequestAccess.mockResolvedValue({
+        address: null,
+        error: { message: "Wallet is locked. Unlock the extension and retry." },
       });
 
       await act(async () => {
@@ -197,7 +190,10 @@ describe("useWallet", () => {
       });
 
       expect(result.current.status).toBe("error");
-      expect(result.current.error).toBe("User declined access");
+      expect(result.current.error).toBe(
+        "Wallet is locked. Unlock the extension and retry."
+      );
+      expect(result.current.toast).toBeNull();
     });
 
     it("marks unavailable when requestAccess throws", async () => {
@@ -407,151 +403,72 @@ describe("useWallet", () => {
     });
   });
 
-  describe("wallet adapters (#736)", () => {
-    it("defaults to the Freighter adapter", async () => {
+  describe("multi-wallet selection (#774)", () => {
+    beforeEach(() => {
+      window.sessionStorage.clear();
+    });
+
+    it("defaults to Freighter and exposes all registered options", async () => {
       mockIsConnected.mockResolvedValue({ isConnected: false });
-
       const { result } = renderHook(() => useWallet());
-      await waitFor(() => expect(result.current.status).toBe("unavailable"));
 
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
       expect(result.current.walletId).toBe("freighter");
-      expect(result.current.walletName).toBe("Freighter");
-      expect(result.current.walletInstallUrl).toBe("https://www.freighter.app/");
+      expect(result.current.walletOptions.map((o) => o.id).sort()).toEqual([
+        "albedo",
+        "freighter",
+        "lobstr",
+        "walletconnect",
+        "xbull",
+      ]);
     });
 
-    it("restores the wallet remembered for this browser", async () => {
-      window.localStorage.setItem(SELECTION_KEY, "lobstr");
-      window.lobstrSignerExtension = true;
+    it("persists the selected wallet across hook mounts", async () => {
       mockIsConnected.mockResolvedValue({ isConnected: false });
+      const first = renderHook(() => useWallet());
+      await waitFor(() => expect(first.result.current.status).toBe("unavailable"));
 
-      const { result } = renderHook(() => useWallet());
-
-      await waitFor(() => expect(result.current.walletId).toBe("lobstr"));
-      await waitFor(() => expect(result.current.status).toBe("disconnected"));
-      expect(result.current.walletName).toBe("LOBSTR");
-      expect(result.current.walletInstallUrl).toBe(
-        "https://lobstr.co/signer-extension"
-      );
-      expect(mockIsConnected).not.toHaveBeenCalled();
-    });
-
-    it("selectWallet switches adapters and persists the choice", async () => {
-      mockIsConnected.mockResolvedValue({ isConnected: false });
-
-      const { result } = renderHook(() => useWallet());
-      await waitFor(() => expect(result.current.status).toBe("unavailable"));
-      expect(mockIsConnected).toHaveBeenCalledTimes(1);
-
-      window.lobstrSignerExtension = true;
       act(() => {
-        result.current.selectWallet("lobstr");
+        first.result.current.selectWallet("xbull");
       });
+      expect(first.result.current.walletId).toBe("xbull");
+      expect(window.sessionStorage.getItem("delego.activeWallet")).toBe("xbull");
+      first.unmount();
 
-      await waitFor(() => expect(result.current.status).toBe("disconnected"));
-      expect(result.current.walletId).toBe("lobstr");
-      expect(window.localStorage.getItem(SELECTION_KEY)).toBe("lobstr");
-      expect(mockIsConnected).toHaveBeenCalledTimes(1);
+      const second = renderHook(() => useWallet());
+      expect(second.result.current.walletId).toBe("xbull");
+      second.unmount();
     });
 
-    it("connect(id) switches to the chosen wallet and remembers it", async () => {
+    it("surfaces a precise unavailable status for non-extension wallets", async () => {
       mockIsConnected.mockResolvedValue({ isConnected: false });
-      answerLobstrProbe(false);
-
       const { result } = renderHook(() => useWallet());
       await waitFor(() => expect(result.current.status).toBe("unavailable"));
 
-      let connected: boolean | undefined;
       await act(async () => {
-        connected = await result.current.connect("lobstr");
+        await result.current.connect("albedo");
       });
 
-      expect(connected).toBe(false);
-      expect(window.localStorage.getItem(SELECTION_KEY)).toBe("lobstr");
-      expect(result.current.walletId).toBe("lobstr");
-      // The adapter switch re-probes LOBSTR, which reports itself missing.
-      await waitFor(() => expect(result.current.status).toBe("unavailable"));
-    });
-
-    it("reports why connect failed when the extension is missing", async () => {
-      window.localStorage.setItem(SELECTION_KEY, "lobstr");
-      answerLobstrProbe(false);
-
-      const { result } = renderHook(() => useWallet());
-      await waitFor(() => expect(result.current.walletId).toBe("lobstr"));
-      await waitFor(() => expect(result.current.status).toBe("unavailable"));
-
-      let connected: boolean | undefined;
-      await act(async () => {
-        connected = await result.current.connect();
-      });
-
-      expect(connected).toBe(false);
+      expect(result.current.walletId).toBe("albedo");
       expect(result.current.status).toBe("unavailable");
-      expect(result.current.error).toBe(
-        "LOBSTR extension not found. Install it to connect your wallet."
-      );
+      expect(result.current.error).toMatch(/Albedo/);
+      expect(mockRequestAccess).not.toHaveBeenCalled();
     });
 
-    it("connect() resolves true once the adapter authorizes", async () => {
+    it("clears the persisted choice on disconnect", async () => {
       mockIsConnected.mockResolvedValue({ isConnected: false });
       const { result } = renderHook(() => useWallet());
       await waitFor(() => expect(result.current.status).toBe("unavailable"));
 
-      mockRequestAccess.mockResolvedValue({ address: "GXYZ789" });
-      mockGetNetwork.mockResolvedValue({
-        network: "TESTNET",
-        networkPassphrase: "Test SDF Network ; September 2015",
+      act(() => {
+        result.current.selectWallet("xbull");
       });
+      expect(window.sessionStorage.getItem("delego.activeWallet")).toBe("xbull");
 
-      let connected: boolean | undefined;
-      await act(async () => {
-        connected = await result.current.connect();
+      act(() => {
+        result.current.disconnect();
       });
-
-      expect(connected).toBe(true);
-      expect(result.current.status).toBe("connected");
-      expect(result.current.address).toBe("GXYZ789");
-    });
-  });
-
-  describe("signTransaction", () => {
-    it("signs through the active adapter", async () => {
-      mockIsConnected.mockResolvedValue({ isConnected: true });
-      mockIsAllowed.mockResolvedValue({ isAllowed: true });
-      mockGetAddress.mockResolvedValue({ address: "GABC123" });
-      mockGetNetwork.mockResolvedValue({
-        network: "TESTNET",
-        networkPassphrase: "Test SDF Network ; September 2015",
-      });
-      mockSignTransaction.mockResolvedValue({
-        signedTxXdr: "AAAA-SIGNED",
-        error: null,
-      });
-
-      const { result } = renderHook(() => useWallet());
-      await waitFor(() => expect(result.current.status).toBe("connected"));
-
-      let signed: string | undefined;
-      await act(async () => {
-        signed = await result.current.signTransaction("xdr-blob");
-      });
-
-      expect(signed).toBe("AAAA-SIGNED");
-      expect(mockSignTransaction).toHaveBeenCalledWith("xdr-blob", {
-        address: "GABC123",
-        networkPassphrase: "Test SDF Network ; September 2015",
-      });
-    });
-
-    it("refuses to sign while demo mode is active", async () => {
-      enableDemoMode();
-      const { result } = renderHook(() => useWallet());
-      await waitFor(() => expect(result.current.status).toBe("connected"));
-
-      await expect(
-        result.current.signTransaction("xdr-blob")
-      ).rejects.toThrow(/read-only demo/);
-      expect(mockSignTransaction).not.toHaveBeenCalled();
+      expect(window.sessionStorage.getItem("delego.activeWallet")).toBeNull();
     });
   });
 });

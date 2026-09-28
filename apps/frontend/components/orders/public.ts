@@ -20,6 +20,26 @@ export { DualControlBoard } from "./DualControlBoard";
 export type { DualControlBoardProps } from "./DualControlBoard";
 export { ReceiptInvoiceModal } from "./ReceiptInvoiceModal";
 export type { ReceiptInvoiceModalProps } from "./ReceiptInvoiceModal";
+export { 
+  TaxBreakdownDisplay, 
+  TaxSummaryRow, 
+  TaxAwareTotal, 
+  useTaxBreakdown 
+} from "./TaxBreakdownDisplay";
+export type { 
+  TaxBreakdownDisplayProps, 
+  TaxSummaryRowProps, 
+  TaxAwareTotalProps 
+} from "./TaxBreakdownDisplay";
+export { 
+  TaxEnabledCheckoutFlow,
+  TaxAwareApprovalCard,
+  TaxAwareReceiptPanel,
+  useTaxEnabledOrder 
+} from "./TaxEnabledCheckoutFlow";
+export type { 
+  TaxEnabledCheckoutFlowProps 
+} from "./TaxEnabledCheckoutFlow";
 export { ExpenseReportExportModal } from "./ExpenseReportExportModal";
 export type { ExpenseReportExportModalProps } from "./ExpenseReportExportModal";
 export { TaxBreakdownPanel } from "./TaxBreakdownPanel";

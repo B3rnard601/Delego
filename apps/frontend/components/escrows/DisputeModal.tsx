@@ -6,11 +6,18 @@ import type { CreateDisputeInput, DisputeReason } from "@delegolabs/types";
 import { DISPUTE_REASON_OPTIONS, MAX_EVIDENCE_URLS } from "../../lib/disputes";
 import { blobToDataUrl, scrubExifMetadata } from "../../lib/exif";
 import { useDemoModeGuard } from "../../hooks/useDemoModeGuard";
+import { useDisputeDraft } from "../../hooks/useDisputeDraft";
 
 export interface DisputeModalProps {
   isOpen: boolean;
   submitting?: boolean;
   error?: string | null;
+  /**
+   * Escrow the dispute belongs to. When provided, the in-progress draft is
+   * persisted to sessionStorage under this id so a refresh restores it (#746).
+   * Omit it to keep the form purely in-memory (fully backwards compatible).
+   */
+  escrowId?: string;
   onSubmit: (input: CreateDisputeInput) => void | Promise<unknown>;
   onClose: () => void;
 }
@@ -22,27 +29,23 @@ interface EvidencePhoto {
   dataUrl: string;
 }
 
-/**
  * "Open dispute" modal — reason select, description, optional evidence URLs,
  * and optional photo evidence.
  *
- * Photos are scrubbed of EXIF metadata (GPS coordinates, camera serial
- * numbers, …) in the browser via `lib/exif` before they become part of the
- * submitted payload, so nothing identifying ever leaves the device (#789).
- *
- * Submission itself (and the resulting optimistic UI) is owned by the caller
- * via `onSubmit` (see hooks/useDispute.ts).
+ * Photos are scrubbed of EXIF metadata in the browser via `lib/exif` (#789).
+ * The typed draft is persisted per escrow (see hooks/useDisputeDraft.ts) and
+ * restored on mount (#746).
  */
 export function DisputeModal({
   isOpen,
   submitting = false,
   error,
+  escrowId,
   onSubmit,
   onClose,
 }: DisputeModalProps) {
-  const [reason, setReason] = useState<DisputeReason>("item_not_received");
-  const [description, setDescription] = useState("");
-  const [evidenceUrls, setEvidenceUrls] = useState<string[]>([""]);
+  const { draft, updateDraft, clearDraft } = useDisputeDraft(escrowId);
+  const { reason, description, evidenceUrls } = draft;
   const [photos, setPhotos] = useState<EvidencePhoto[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
@@ -51,20 +54,38 @@ export function DisputeModal({
 
   if (!isOpen) return null;
 
+  const setReason = (next: DisputeReason) =>
+    updateDraft({ ...draft, reason: next });
+
+  const setDescription = (next: string) =>
+    updateDraft({ ...draft, description: next });
+
   const filledUrlCount = evidenceUrls.filter((url) => url.trim().length > 0).length;
   const evidenceCount = filledUrlCount + photos.length;
   const atEvidenceLimit = evidenceCount >= MAX_EVIDENCE_URLS;
 
   const updateEvidenceUrl = (index: number, value: string) => {
-    setEvidenceUrls((prev) => prev.map((url, i) => (i === index ? value : url)));
+    updateDraft({
+      ...draft,
+      evidenceUrls: evidenceUrls.map((url, i) => (i === index ? value : url)),
+    });
   };
 
   const addEvidenceUrl = () => {
-    setEvidenceUrls((prev) => (prev.length >= MAX_EVIDENCE_URLS ? prev : [...prev, ""]));
+    updateDraft({
+      ...draft,
+      evidenceUrls:
+        evidenceUrls.length >= MAX_EVIDENCE_URLS
+          ? evidenceUrls
+          : [...evidenceUrls, ""],
+    });
   };
 
   const removeEvidenceUrl = (index: number) => {
-    setEvidenceUrls((prev) => prev.filter((_, i) => i !== index));
+    updateDraft({
+      ...draft,
+      evidenceUrls: evidenceUrls.filter((_, i) => i !== index),
+    });
   };
 
   const removePhoto = (id: string) => {
@@ -116,9 +137,9 @@ export function DisputeModal({
 
   const canSubmit = description.trim().length > 0 && !submitting && !scrubbing;
 
-  const handleSubmit = guard(() => {
+  const handleSubmit = guard(async () => {
     if (!canSubmit) return;
-    onSubmit({
+    const result = await onSubmit({
       reason,
       description: description.trim(),
       evidenceUrls: [
@@ -126,6 +147,7 @@ export function DisputeModal({
         ...photos.map((photo) => photo.dataUrl),
       ],
     });
+    if (result) clearDraft();
   });
 
   return (
