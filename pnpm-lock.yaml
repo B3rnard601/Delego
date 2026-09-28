@@ -29,6 +29,9 @@ importers:
       '@delegolabs/api-generated':
         specifier: workspace:*
         version: link:../../packages/api-generated
+      '@delegolabs/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@delegolabs/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -140,6 +143,16 @@ importers:
         version: 2.1.9(@types/node@22.20.4)(jsdom@25.0.1)(msw@2.15.0(@types/node@22.20.4)(typescript@5.9.3))(terser@5.51.2)
 
   packages/api-generated:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/types:
+    dependencies:
+      '@delegolabs/api-generated':
+        specifier: workspace:*
+        version: link:../api-generated
     devDependencies:
       typescript:
         specifier: ^5.7.0

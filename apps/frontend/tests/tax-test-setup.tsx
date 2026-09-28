@@ -15,17 +15,17 @@ export const TEST_ORDERS = {
     delegationId: "delegation-123", 
     merchantId: "merchant-123",
     status: "pending_approval" as const,
-    totalStroops: "1000000000", // 100 XLM
+    totalStroops: 1000000000n, // 100 XLM
     lineItems: [
       {
         productId: "product-1",
         quantity: 1,
-        unitPriceStroops: "1000000000",
+        unitPriceStroops: 1000000000n,
       },
     ],
     escrowContractId: null,
-    createdAt: "2024-01-01T00:00:00Z",
-    updatedAt: "2024-01-01T00:00:00Z",
+    createdAt: new Date("2024-01-01T00:00:00Z"),
+    updatedAt: new Date("2024-01-01T00:00:00Z"),
   } as Order,
 
   multiItem: {
@@ -34,22 +34,22 @@ export const TEST_ORDERS = {
     delegationId: "delegation-123",
     merchantId: "merchant-123", 
     status: "pending_approval" as const,
-    totalStroops: "1500000000", // 150 XLM
+    totalStroops: 1500000000n, // 150 XLM
     lineItems: [
       {
         productId: "laptop",
         quantity: 1,
-        unitPriceStroops: "1000000000", // 100 XLM
+        unitPriceStroops: 1000000000n, // 100 XLM
       },
       {
         productId: "mouse", 
         quantity: 2,
-        unitPriceStroops: "250000000", // 25 XLM each
+        unitPriceStroops: 250000000n, // 25 XLM each
       },
     ],
     escrowContractId: null,
-    createdAt: "2024-01-01T00:00:00Z",
-    updatedAt: "2024-01-01T00:00:00Z",
+    createdAt: new Date("2024-01-01T00:00:00Z"),
+    updatedAt: new Date("2024-01-01T00:00:00Z"),
   } as Order,
 
   highValue: {
@@ -58,17 +58,17 @@ export const TEST_ORDERS = {
     delegationId: "delegation-123",
     merchantId: "merchant-123",
     status: "pending_approval" as const,
-    totalStroops: "100000000000", // 10,000 XLM
+    totalStroops: 100000000000n, // 10,000 XLM
     lineItems: [
       {
         productId: "enterprise-license",
         quantity: 1,
-        unitPriceStroops: "100000000000",
+        unitPriceStroops: 100000000000n,
       },
     ],
     escrowContractId: null,
-    createdAt: "2024-01-01T00:00:00Z", 
-    updatedAt: "2024-01-01T00:00:00Z",
+    createdAt: new Date("2024-01-01T00:00:00Z"), 
+    updatedAt: new Date("2024-01-01T00:00:00Z"),
   } as Order,
 };
 
@@ -142,17 +142,17 @@ export function createTestOrder(
     delegationId: "test-delegation",
     merchantId: "test-merchant",
     status: "pending_approval",
-    totalStroops: totalStroops.toString(),
+    totalStroops: totalStroops,
     lineItems: lineItems.map(item => ({
       productId: item.productId,
       quantity: item.quantity,
-      unitPriceStroops: xlmToStroops(item.priceXlm).toString(),
+      unitPriceStroops: xlmToStroops(item.priceXlm),
     })),
     escrowContractId: null,
-    createdAt: "2024-01-01T00:00:00Z",
-    updatedAt: "2024-01-01T00:00:00Z",
+    createdAt: new Date("2024-01-01T00:00:00Z"),
+    updatedAt: new Date("2024-01-01T00:00:00Z"),
     ...overrides,
-  };
+  } as Order;
 }
 
 /**
