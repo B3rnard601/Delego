@@ -25,6 +25,7 @@
   "dependencies": {
     "@delegolabs/api-generated": "workspace:*",
     "@delegolabs/sdk": "^0.0.1",
+    "framer-motion": "^11.11.17",
     "@delegolabs/types": "^0.1.1",
     "@delegolabs/ui": "workspace:*",
     "@tanstack/react-virtual": "^3.10.9",
