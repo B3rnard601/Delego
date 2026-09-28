@@ -7,6 +7,7 @@
     "boundaries/include": ["components/**/*"],
     "boundaries/elements": [
       { "type": "feature-analytics",       "pattern": "components/analytics/**"       },
+      { "type": "feature-agent",           "pattern": "components/agent/**"           },
       { "type": "feature-storefront",      "pattern": "components/storefront/**"      },
       { "type": "feature-announcements",   "pattern": "components/announcements/**"   },
       { "type": "feature-command-palette", "pattern": "components/command-palette/**" },

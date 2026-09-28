@@ -8,3 +8,6 @@ export { VoiceInputButton } from "./VoiceInputButton";
 export type { VoiceInputButtonProps } from "./VoiceInputButton";
 export { QuoteComparisonDrawer } from "./QuoteComparisonDrawer";
 export type { QuoteComparisonDrawerProps } from "./QuoteComparisonDrawer";
+export { AgentChatDrawer } from "./AgentChatDrawer";
+export type { AgentChatDrawerProps } from "./AgentChatDrawer";
+

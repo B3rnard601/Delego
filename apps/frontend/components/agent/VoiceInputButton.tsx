@@ -6,6 +6,9 @@ import { useVoiceInput } from "../../hooks/useVoiceInput";
 export interface VoiceInputButtonProps {
   onTranscript: (text: string) => void;
   disabled?: boolean;
+  label?: string;
+  lang?: string;
+  className?: string;
 }
 
 const UNSUPPORTED_MESSAGE = "Voice input isn't supported in this browser.";
@@ -13,12 +16,14 @@ const WAVE_BARS = [0, 1, 2, 3, 4];
 
 /**
  * Mic button that dictates agent purchase instructions via the Web Speech API
- * (#681). Finalized speech is passed to `onTranscript` so the caller can drop
+ * (#681, #800). Finalized speech is passed to `onTranscript` so the caller can drop
  * it straight into its chat input.
  */
 export function VoiceInputButton({
   onTranscript,
   disabled = false,
+  label,
+  className,
 }: VoiceInputButtonProps) {
   const { isListening, transcript, error, isSupported, start, stop } =
     useVoiceInput(onTranscript);
@@ -27,10 +32,11 @@ export function VoiceInputButton({
   const statusId = useId();
 
   const isDisabled = disabled || !isSupported;
-  const label = isListening ? "Stop voice input" : "Start voice input";
+  const ariaLabel = isListening ? "Stop voice input" : label ?? "Start voice input";
 
   return (
     <span
+      className={className}
       style={{
         position: "relative",
         display: "inline-flex",
@@ -54,7 +60,7 @@ export function VoiceInputButton({
         type="button"
         onClick={isListening ? stop : start}
         disabled={isDisabled}
-        aria-label={label}
+        aria-label={ariaLabel}
         aria-pressed={isListening}
         aria-describedby={
           !isSupported ? tooltipId : error ? statusId : undefined
