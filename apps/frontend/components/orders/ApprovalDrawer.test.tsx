@@ -24,6 +24,12 @@ vi.mock("../../lib/localApprovalNotes", () => ({
   getLocalApprovalNote: () => null,
 }));
 
+/**
+ * Accessible name of the price-advisory acknowledgement tick. The drawer also
+ * renders the escrow-yield checkbox, so a role-only query is ambiguous.
+ */
+const PRICING_ACK = /reviewed the pricing/i;
+
 function makeOrder(overrides: Partial<Order> = {}): Order {
   return {
     id: "order-1",
