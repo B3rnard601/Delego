@@ -59,6 +59,23 @@ export {
   PathPaymentWidget,
   type PathPaymentWidgetProps,
   type PathPaymentEstimate,
+  type PathPaymentQuote,
+  type LiquidityPoolReserves,
 } from "./PathPaymentWidget.js";
+export { Icon, type IconProps } from "./Icon.js";
+export {
+  PathPaymentSlippageSlider,
+  calculateMinimumReceivedAmount,
+  calculateMaxSourceAmount,
+  calculatePriceImpactFromReserves,
+  type PathPaymentSlippageSliderProps,
+} from "./PathPaymentSlippageSlider.js";
+export {
+  ProductCard,
+  type ProductCardProps,
+  type RecommendedProduct,
+  type Currency,
+} from "./ProductCard.js";
 
 export { VerificationBadge, type VerificationBadgeProps } from "./VerificationBadge.js";
+export * from "./InteractiveTrackingTimeline.js";
