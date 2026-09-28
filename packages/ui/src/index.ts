@@ -77,5 +77,5 @@ export {
   type Currency,
 } from "./ProductCard.js";
 
-
-export * from './InteractiveTrackingTimeline.js';
+export { VerificationBadge, type VerificationBadgeProps } from "./VerificationBadge.js";
+export * from "./InteractiveTrackingTimeline.js";
