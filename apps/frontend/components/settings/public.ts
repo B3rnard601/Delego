@@ -19,3 +19,4 @@ export type { AddressPickerProps } from "./AddressPicker";
 export { AddressBookPage } from "./AddressBookPage";
 export type { AddressBookPageProps } from "./AddressBookPage";
 export { KillSwitchCard } from "./KillSwitchCard";
+export { ChatAudioSettingsCard } from "./ChatAudioSettingsCard";
