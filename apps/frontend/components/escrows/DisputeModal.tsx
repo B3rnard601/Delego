@@ -1,15 +1,21 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@delegolabs/ui";
 import type { CreateDisputeInput, DisputeReason } from "@delegolabs/types";
 import { DISPUTE_REASON_OPTIONS, MAX_EVIDENCE_URLS } from "../../lib/disputes";
 import { useDemoModeGuard } from "../../hooks/useDemoModeGuard";
+import { useDisputeDraft } from "../../hooks/useDisputeDraft";
 
 export interface DisputeModalProps {
   isOpen: boolean;
   submitting?: boolean;
   error?: string | null;
+  /**
+   * Escrow the dispute belongs to. When provided, the in-progress draft is
+   * persisted to sessionStorage under this id so a refresh restores it (#746).
+   * Omit it to keep the form purely in-memory (fully backwards compatible).
+   */
+  escrowId?: string;
   onSubmit: (input: CreateDisputeInput) => void | Promise<unknown>;
   onClose: () => void;
 }
@@ -18,42 +24,67 @@ export interface DisputeModalProps {
  * "Open dispute" modal — reason select, description, and optional evidence
  * URLs. Submission itself (and the resulting optimistic UI) is owned by the
  * caller via `onSubmit` (see hooks/useDispute.ts).
+ *
+ * The typed draft is persisted per escrow (see hooks/useDisputeDraft.ts) and
+ * restored on mount, so an accidental refresh mid-entry doesn't lose the
+ * reason, description, or evidence URLs. A successful submit — signalled by
+ * `onSubmit` resolving to a truthy value, matching the escrow page's existing
+ * `if (result)` success check — clears the stored draft.
  */
 export function DisputeModal({
   isOpen,
   submitting = false,
   error,
+  escrowId,
   onSubmit,
   onClose,
 }: DisputeModalProps) {
-  const [reason, setReason] = useState<DisputeReason>("item_not_received");
-  const [description, setDescription] = useState("");
-  const [evidenceUrls, setEvidenceUrls] = useState<string[]>([""]);
+  const { draft, updateDraft, clearDraft } = useDisputeDraft(escrowId);
+  const { reason, description, evidenceUrls } = draft;
   const { disabledProps, guard } = useDemoModeGuard();
 
   if (!isOpen) return null;
 
+  const setReason = (next: DisputeReason) =>
+    updateDraft({ ...draft, reason: next });
+
+  const setDescription = (next: string) =>
+    updateDraft({ ...draft, description: next });
+
   const updateEvidenceUrl = (index: number, value: string) => {
-    setEvidenceUrls((prev) => prev.map((url, i) => (i === index ? value : url)));
+    updateDraft({
+      ...draft,
+      evidenceUrls: evidenceUrls.map((url, i) => (i === index ? value : url)),
+    });
   };
 
   const addEvidenceUrl = () => {
-    setEvidenceUrls((prev) => (prev.length >= MAX_EVIDENCE_URLS ? prev : [...prev, ""]));
+    updateDraft({
+      ...draft,
+      evidenceUrls:
+        evidenceUrls.length >= MAX_EVIDENCE_URLS
+          ? evidenceUrls
+          : [...evidenceUrls, ""],
+    });
   };
 
   const removeEvidenceUrl = (index: number) => {
-    setEvidenceUrls((prev) => prev.filter((_, i) => i !== index));
+    updateDraft({
+      ...draft,
+      evidenceUrls: evidenceUrls.filter((_, i) => i !== index),
+    });
   };
 
   const canSubmit = description.trim().length > 0 && !submitting;
 
-  const handleSubmit = guard(() => {
+  const handleSubmit = guard(async () => {
     if (!canSubmit) return;
-    onSubmit({
+    const result = await onSubmit({
       reason,
       description: description.trim(),
       evidenceUrls: evidenceUrls.map((url) => url.trim()).filter(Boolean),
     });
+    if (result) clearDraft();
   });
 
   return (

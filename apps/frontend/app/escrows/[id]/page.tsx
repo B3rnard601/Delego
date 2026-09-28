@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Button, Card } from "@delegolabs/ui";
@@ -31,6 +31,10 @@ import {
   type SimulationDryRunResult,
 } from "../../../lib/simulationDryRun";
 import { SimulationDryRunModal } from "../../../components/transactions/SimulationDryRunModal";
+import {
+  useQueryParamState,
+  stringParamCodec,
+} from "../../../hooks/useQueryParamState";
 
 /** Escrow detail page — dispute lifecycle and contract explorer link for a single escrow. */
 export default function EscrowDetailPage() {
@@ -54,6 +58,27 @@ export default function EscrowDetailPage() {
     openDispute,
   } = useDispute(escrow?.escrowId);
   const [showDisputeModal, setShowDisputeModal] = useState(false);
+
+  // The dispute UI is a single-step modal, so there is no `?step=` to mirror.
+  // The closest meaningful equivalent is "a draft is in progress": while the
+  // modal is open, `?dispute=draft` makes the state shareable and lets a
+  // refresh reopen the modal, where sessionStorage then restores the fields
+  // (#746). Uses the shared useQueryParamState hook so the URL is only read
+  // after mount (no hydration mismatch) and invalid values fall back silently.
+  const [disputeParam, setDisputeParam, { hydrated: disputeParamHydrated }] =
+    useQueryParamState<string>({
+      key: "dispute",
+      defaultValue: "",
+      codec: stringParamCodec(),
+    });
+
+  useEffect(() => {
+    if (!disputeParamHydrated) return;
+    if (disputeParam !== "draft") return;
+    if (!escrow) return;
+    if (!canOpen(escrow.status)) return;
+    setShowDisputeModal(true);
+  }, [disputeParamHydrated, disputeParam, escrow, canOpen]);
 
   if (loading && escrows.length === 0) {
     return (
@@ -88,6 +113,16 @@ export default function EscrowDetailPage() {
   const showDisputeCta = canOpen(escrow.status);
   const showDisputeStatus = dispute !== null || optimisticallyDisputed;
 
+  const openDisputeModal = () => {
+    setShowDisputeModal(true);
+    setDisputeParam("draft");
+  };
+
+  const closeDisputeModal = () => {
+    setShowDisputeModal(false);
+    setDisputeParam("");
+  };
+
   return (
     <div className="settings-page">
       {/* Single, low-cost link — viewport prefetch is fine (#621). */}
@@ -110,7 +145,7 @@ export default function EscrowDetailPage() {
           }}
         />
         {showDisputeCta && (
-          <Button variant="secondary" onClick={() => setShowDisputeModal(true)}>
+          <Button variant="secondary" onClick={openDisputeModal}>
             Open dispute
           </Button>
         )}
@@ -211,13 +246,15 @@ export default function EscrowDetailPage() {
 
       <DisputeModal
         isOpen={showDisputeModal}
+        escrowId={escrow.escrowId}
         submitting={submitting}
         error={error}
         onSubmit={async (input) => {
           const result = await openDispute(input);
-          if (result) setShowDisputeModal(false);
+          if (result) closeDisputeModal();
+          return result;
         }}
-        onClose={() => setShowDisputeModal(false)}
+        onClose={closeDisputeModal}
       />
 
       <SimulationDryRunModal
