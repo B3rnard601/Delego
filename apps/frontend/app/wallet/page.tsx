@@ -2,12 +2,16 @@
 
 import { useCallback, useState } from "react";
 import { Button, Card } from "@delegolabs/ui";
+import type { WalletId } from "../../lib/wallet";
 import { PasskeyRegisterModal } from "../../components/wallet/PasskeyRegisterModal";
 import { useWallet } from "../../hooks/useWallet";
 import { useNetwork } from "../../hooks/useNetwork";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useBalanceHistory } from "../../hooks/useBalanceHistory";
-import { WalletConnectButton } from "../../components/wallet/WalletConnectButton";
+import {
+  WalletConnectButton,
+  WalletPicker,
+} from "../../components/wallet/public";
 import { FeeTierField } from "../../components/wallet/FeeTierField";
 import { BalanceSparkline } from "../../components/wallet/BalanceSparkline";
 import { AssetBreakdownTable } from "../../components/wallet/AssetBreakdownTable";
@@ -18,8 +22,8 @@ import {
 } from "../../hooks/useDemoModeGuard";
 
 const STATUS_LABEL: Record<string, string> = {
-  checking: "Checking for Freighter…",
-  unavailable: "Freighter extension not detected",
+  checking: "Checking wallet…",
+  unavailable: "Wallet extension not detected",
   disconnected: "Not connected",
   connecting: "Connecting…",
   connected: "Connected",
@@ -27,7 +31,18 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function WalletPage() {
-  const { status, address, network, networkPassphrase, error } = useWallet();
+  const wallet = useWallet();
+  const {
+    status,
+    address,
+    network,
+    networkPassphrase,
+    error,
+    connect,
+    walletId,
+    walletName,
+    walletInstallUrl,
+  } = wallet;
   const { network: activeNetwork } = useNetwork();
   const notifications = useNotifications();
   const [funding, setFunding] = useState(false);
@@ -36,6 +51,10 @@ export default function WalletPage() {
   const { isDemoMode } = useDemoModeGuard();
 
   const isConnected = status === "connected" && !!address;
+  const handleConnect = useCallback(
+    (id: WalletId) => connect(id),
+    [connect]
+  );
   const balanceState = useBalanceHistory(
     address,
     activeNetwork.horizonUrl,
@@ -97,7 +116,7 @@ export default function WalletPage() {
     <div className="settings-page">
       <header className="header">
         <h1>Wallet</h1>
-        <p>Connect your Stellar wallet via the Freighter browser extension</p>
+        <p>Connect your Stellar wallet with Freighter or LOBSTR</p>
       </header>
 
       <Card title="Connection" ariaLabel="Wallet connection status">
@@ -168,18 +187,25 @@ export default function WalletPage() {
             <p className="settings-toggle-hint">
               Install the{" "}
               <a
-                href="https://www.freighter.app/"
+                href={walletInstallUrl}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Freighter wallet extension
+                {walletName} wallet extension
               </a>{" "}
               to connect your Stellar account to Delego.
             </p>
           )}
 
+          <WalletPicker
+            onConnect={handleConnect}
+            connecting={status === "connecting"}
+            selectedId={walletId}
+            connectedId={isConnected ? walletId : null}
+          />
+
           <div className="form-actions">
-            <WalletConnectButton showDetails={false} />
+            <WalletConnectButton showDetails={false} wallet={wallet} />
             {isConnected && (
               <Button
                 variant="secondary"
@@ -287,8 +313,8 @@ export default function WalletPage() {
         <p>
           Once connected, your wallet address is used to grant scoped spending
           permissions to AI agents. Delego never has access to your private key
-          — every transaction is signed locally in the Freighter extension
-          before it is submitted to Stellar.
+          — every transaction is signed locally in your wallet extension before
+          it is submitted to Stellar.
         </p>
       </Card>
     </div>

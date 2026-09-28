@@ -17,6 +17,14 @@ test.describe("golden path: connect wallet", () => {
     await expect(page.getByRole("button", { name: /connect wallet/i })).toBeVisible();
     await page.getByRole("button", { name: /connect wallet/i }).click();
 
+    // The picker lists every registered wallet: installed ones get a connect
+    // action, missing ones an install link.
+    const picker = page.getByRole("dialog");
+    await expect(picker).toBeVisible();
+    await expect(picker.getByRole("button", { name: "Connect with Freighter" })).toBeVisible();
+    await expect(picker.getByRole("link", { name: "Install LOBSTR" })).toBeVisible();
+    await picker.getByRole("button", { name: "Connect with Freighter" }).click();
+
     await expect(page.getByText(E2E_WALLET_ADDRESS.slice(0, 6))).toBeVisible();
   });
 });

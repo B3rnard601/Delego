@@ -1,12 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   isDemoMode,
   DEMO_WALLET_ADDRESS,
   DEMO_NETWORK,
   DEMO_NETWORK_PASSPHRASE,
 } from "../lib/demoMode";
+import {
+  DEFAULT_WALLET_ID,
+  WalletAccessDeniedError,
+  getWalletAdapter,
+  loadSelectedWalletId,
+  saveSelectedWalletId,
+  toWalletError,
+} from "../lib/wallet";
+import type { WalletId, WalletNetworkInfo } from "../lib/wallet";
 import { useNotifications } from "./useNotifications";
 import { useAnnounce } from "./useAnnounce";
 
@@ -43,22 +52,39 @@ const demoState: WalletState = {
   error: null,
 };
 
+const DETECT_ERROR_FALLBACK = "Wallet extension not detected";
+const ADDRESS_ERROR_FALLBACK = "Couldn't read the wallet address. Please try again.";
+const CONNECT_ERROR_FALLBACK =
+  "Wallet extension not found. Install it to connect your wallet.";
+const DEMO_SIGN_BLOCKED =
+  "This is a read-only demo — turn it off to sign transactions with your wallet.";
+
 function truncateAddress(address: string): string {
   if (address.length <= 12) return address;
   return `${address.slice(0, 4)}…${address.slice(-4)}`;
 }
 
 /**
- * Connects to the Freighter browser extension via `@stellar/freighter-api`.
- * Freighter only exists in the browser, so the SDK is dynamically imported
- * the same way the QR code library is lazy-loaded in DelegationQR.
+ * Connection state for the selected Stellar wallet adapter (#736).
+ *
+ * Every extension call goes through `lib/wallet`'s `StellarWalletAdapter`
+ * interface — Freighter ships as the first adapter (its statuses, messages
+ * and change listeners behave exactly as before), LOBSTR as the second, and
+ * `selectWallet`/`connect(id)` switch between them with the choice persisted
+ * per browser. `signTransaction` delegates to the same adapter and is the
+ * signing entry point for FE-013.
  */
 export function useWallet() {
   const [state, setState] = useState<WalletState>(
     isDemoMode() ? demoState : initialState
   );
+  const [walletId, setWalletId] = useState<WalletId>(
+    () => loadSelectedWalletId() ?? DEFAULT_WALLET_ID
+  );
   const [toast, setToast] = useState<string | null>(null);
   const prevAddressRef = useRef<string | null>(null);
+
+  const adapter = useMemo(() => getWalletAdapter(walletId), [walletId]);
 
   let announceFn: ((msg: string) => void) | undefined;
   try {
@@ -114,57 +140,59 @@ export function useWallet() {
   const refresh = useCallback(async () => {
     if (isDemoMode()) {
       setState(demoState);
-      return null;
+      return;
     }
     setState((prev) => ({ ...prev, status: "checking", error: null }));
+
+    let detected = false;
     try {
-      const freighter = await import("@stellar/freighter-api");
-
-      const connected = await freighter.isConnected();
-      if (connected.error || !connected.isConnected) {
-        updateWalletState({ ...initialState, status: "unavailable" });
-        return freighter;
-      }
-
-      const allowed = await freighter.isAllowed();
-      if (allowed.error || !allowed.isAllowed) {
-        updateWalletState({ ...initialState, status: "disconnected" });
-        return freighter;
-      }
-
-      const addressRes = await freighter.getAddress();
-      if (addressRes.error || !addressRes.address) {
-        updateWalletState({
-          ...initialState,
-          status: "error",
-          error:
-            addressRes.error?.message ??
-            "Couldn't read the wallet address. Please try again.",
-        });
-        return freighter;
-      }
-
-      const net = await freighter.getNetwork();
-      updateWalletState({
-        status: "connected",
-        address: addressRes.address,
-        network: net.error ? null : net.network,
-        networkPassphrase: net.error ? null : net.networkPassphrase,
-        error: null,
-      });
-      return freighter;
+      detected = await adapter.detect();
     } catch (err) {
       updateWalletState({
         ...initialState,
         status: "unavailable",
-        error:
-          err instanceof Error
-            ? err.message
-            : "Freighter extension not detected",
+        error: toWalletError(err, DETECT_ERROR_FALLBACK).message,
       });
-      return null;
+      return;
     }
-  }, [updateWalletState]);
+
+    if (!detected) {
+      updateWalletState({ ...initialState, status: "unavailable" });
+      return;
+    }
+
+    let address: string | null = null;
+    try {
+      address = await adapter.getAddress();
+    } catch (err) {
+      updateWalletState({
+        ...initialState,
+        status: "error",
+        error: toWalletError(err, ADDRESS_ERROR_FALLBACK).message,
+      });
+      return;
+    }
+
+    if (!address) {
+      updateWalletState({ ...initialState, status: "disconnected" });
+      return;
+    }
+
+    let network: WalletNetworkInfo | null = null;
+    try {
+      network = await adapter.getNetwork();
+    } catch {
+      network = null;
+    }
+
+    updateWalletState({
+      status: "connected",
+      address,
+      network: network?.network ?? null,
+      networkPassphrase: network?.networkPassphrase ?? null,
+      error: null,
+    });
+  }, [adapter, updateWalletState]);
 
   useEffect(() => {
     if (isDemoMode()) {
@@ -173,140 +201,134 @@ export function useWallet() {
     }
 
     let isMounted = true;
-    let unsubAccount: (() => void) | undefined;
-    let unsubNetwork: (() => void) | undefined;
+    let unsubscribe: (() => void) | undefined;
 
-    void refresh().then((freighter) => {
-      if (!isMounted || !freighter) return;
+    void (async () => {
+      try {
+        await refresh();
+      } catch {
+        /* refresh reports its own failures through state */
+      }
+      if (!isMounted || !adapter.subscribe) return;
 
-      const fAny = freighter as Record<string, unknown>;
-      const fDefault =
-        "default" in fAny && fAny.default && typeof fAny.default === "object"
-          ? (fAny.default as Record<string, unknown>)
-          : undefined;
-
-      const onAccountChange = (fAny.onAccountChange ??
-        fDefault?.onAccountChange ??
-        fAny.getAccountChangeHandler ??
-        fDefault?.getAccountChangeHandler) as
-        | ((cb: (addr: string) => void) => (() => void) | { remove: () => void })
-        | undefined;
-
-      const onNetworkChange = (fAny.onNetworkChange ??
-        fDefault?.onNetworkChange ??
-        fAny.getNetworkChangeHandler ??
-        fDefault?.getNetworkChangeHandler) as
-        | ((cb: (net: string) => void) => (() => void) | { remove: () => void })
-        | undefined;
-
-      const watchWalletChanges = (fAny.WatchWalletChanges ??
-        fDefault?.WatchWalletChanges) as
-        | ((cb: (state: unknown) => void) => (() => void) | { remove: () => void })
-        | undefined;
-
-      if (typeof onAccountChange === "function") {
-        const res = onAccountChange(() => {
+      try {
+        const registration = await adapter.subscribe(() => {
           if (isMounted) void refresh();
         });
-        if (typeof res === "function") {
-          unsubAccount = res;
-        } else if (
-          res &&
-          typeof (res as { remove?: () => void }).remove === "function"
-        ) {
-          unsubAccount = () => (res as { remove: () => void }).remove();
+        if (!isMounted) {
+          if (typeof registration === "function") registration();
+          return;
         }
-      }
-
-      if (typeof onNetworkChange === "function") {
-        const res = onNetworkChange(() => {
-          if (isMounted) void refresh();
-        });
-        if (typeof res === "function") {
-          unsubNetwork = res;
-        } else if (
-          res &&
-          typeof (res as { remove?: () => void }).remove === "function"
-        ) {
-          unsubNetwork = () => (res as { remove: () => void }).remove();
+        if (typeof registration === "function") {
+          unsubscribe = registration;
         }
+      } catch {
+        /* the extension offers no change listeners here */
       }
-
-      if (
-        !unsubAccount &&
-        !unsubNetwork &&
-        typeof watchWalletChanges === "function"
-      ) {
-        const res = watchWalletChanges(() => {
-          if (isMounted) void refresh();
-        });
-        if (typeof res === "function") {
-          unsubAccount = res;
-        } else if (
-          res &&
-          typeof (res as { remove?: () => void }).remove === "function"
-        ) {
-          unsubAccount = () => (res as { remove: () => void }).remove();
-        }
-      }
-    });
+    })();
 
     return () => {
       isMounted = false;
-      if (unsubAccount) unsubAccount();
-      if (unsubNetwork) unsubNetwork();
+      if (unsubscribe) unsubscribe();
     };
-  }, [refresh]);
+  }, [adapter, refresh]);
 
-  const connect = useCallback(async () => {
-    if (isDemoMode()) {
-      setState(demoState);
-      return;
-    }
-    setState((prev) => ({ ...prev, status: "connecting", error: null }));
-    try {
-      const freighter = await import("@stellar/freighter-api");
-      const access = await freighter.requestAccess();
-      if (access.error || !access.address) {
-        setState((prev) => ({
-          ...prev,
-          status: "error",
-          error: access.error?.message ?? "Wallet access was denied",
-        }));
-        return;
+  const connect = useCallback(
+    async (id?: WalletId): Promise<boolean> => {
+      if (isDemoMode()) {
+        setState(demoState);
+        return true;
       }
 
-      const net = await freighter.getNetwork();
-      updateWalletState({
-        status: "connected",
-        address: access.address,
-        network: net.error ? null : net.network,
-        networkPassphrase: net.error ? null : net.networkPassphrase,
-        error: null,
-      });
-    } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        status: "unavailable",
-        error:
-          err instanceof Error
-            ? err.message
-            : "Freighter extension not found. Install it to connect your wallet.",
-      }));
-    }
-  }, [updateWalletState]);
+      const target = id ? getWalletAdapter(id) : adapter;
+      if (id) {
+        saveSelectedWalletId(target.id);
+        prevAddressRef.current = null;
+        if (target.id !== walletId) setWalletId(target.id);
+      }
+
+      setState((prev) => ({ ...prev, status: "connecting", error: null }));
+      try {
+        const address = await target.connect();
+        let network: WalletNetworkInfo | null = null;
+        try {
+          network = await target.getNetwork();
+        } catch {
+          network = null;
+        }
+        updateWalletState({
+          status: "connected",
+          address,
+          network: network?.network ?? null,
+          networkPassphrase: network?.networkPassphrase ?? null,
+          error: null,
+        });
+        return true;
+      } catch (err) {
+        setState((prev) => ({
+          ...prev,
+          status:
+            err instanceof WalletAccessDeniedError ? "error" : "unavailable",
+          error: toWalletError(err, CONNECT_ERROR_FALLBACK).message,
+        }));
+        return false;
+      }
+    },
+    [adapter, updateWalletState, walletId]
+  );
+
+  /**
+   * Switches the selected wallet without connecting. The choice is persisted
+   * for this browser, and the effect above re-probes the new adapter.
+   */
+  const selectWallet = useCallback(
+    (id: WalletId) => {
+      const target = getWalletAdapter(id);
+      saveSelectedWalletId(target.id);
+      prevAddressRef.current = null;
+      if (target.id !== walletId) setWalletId(target.id);
+      if (!isDemoMode()) {
+        setState((prev) => ({ ...prev, status: "checking", error: null }));
+      }
+    },
+    [walletId]
+  );
+
+  const signTransaction = useCallback(
+    async (xdr: string): Promise<string> => {
+      if (isDemoMode()) {
+        throw new Error(DEMO_SIGN_BLOCKED);
+      }
+      return adapter.signTransaction(xdr);
+    },
+    [adapter]
+  );
 
   const disconnect = useCallback(() => {
     prevAddressRef.current = null;
+    try {
+      const result = adapter.disconnect();
+      if (result instanceof Promise) void result.catch(() => undefined);
+    } catch {
+      /* local state is reset regardless of what the extension says */
+    }
     setState({ ...initialState, status: "disconnected" });
-  }, []);
+  }, [adapter]);
 
   return {
     ...state,
     isConnected: state.status === "connected",
+    walletId: adapter.id,
+    walletName: adapter.name,
+    walletInstallUrl: adapter.installUrl,
     connect,
+    selectWallet,
     disconnect,
     refresh,
+    signTransaction,
     toast,
   };
 }
+
+/** Everything `useWallet` returns — usable as a prop type for shared instances. */
+export type WalletHandle = ReturnType<typeof useWallet>;

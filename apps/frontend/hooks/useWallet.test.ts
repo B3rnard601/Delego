@@ -13,6 +13,7 @@ const {
   mockGetAddress,
   mockGetNetwork,
   mockRequestAccess,
+  mockSignTransaction,
   mockOnAccountChange,
   mockOnNetworkChange,
   mockWatchWalletChanges,
@@ -22,6 +23,7 @@ const {
   mockGetAddress: vi.fn(),
   mockGetNetwork: vi.fn(),
   mockRequestAccess: vi.fn(),
+  mockSignTransaction: vi.fn(),
   mockOnAccountChange: vi.fn(),
   mockOnNetworkChange: vi.fn(),
   mockWatchWalletChanges: vi.fn(),
@@ -33,11 +35,32 @@ vi.mock("@stellar/freighter-api", () => ({
   getAddress: mockGetAddress,
   getNetwork: mockGetNetwork,
   requestAccess: mockRequestAccess,
+  signTransaction: mockSignTransaction,
   onAccountChange: mockOnAccountChange,
   onNetworkChange: mockOnNetworkChange,
   WatchWalletChanges: mockWatchWalletChanges,
   default: {},
 }));
+
+const SELECTION_KEY = "delego_selected_wallet";
+
+/** Answers the LOBSTR install probe instead of waiting out its 2s timeout. */
+function answerLobstrProbe(isConnected: boolean): void {
+  vi.spyOn(window, "postMessage").mockImplementation((message) => {
+    const req = message as { source?: string; messageId?: string; type?: string };
+    if (req?.source !== "LOBSTR_EXTERNAL_MSG_REQUEST") return;
+    if (req.type !== "REQUEST_CONNECTION_STATUS") return;
+    const event = new MessageEvent("message", {
+      data: {
+        source: "LOBSTR_EXTERNAL_MSG_RESPONSE",
+        messagedId: req.messageId,
+        isConnected,
+      },
+    });
+    Object.defineProperty(event, "source", { value: window });
+    window.dispatchEvent(event);
+  });
+}
 
 describe("useWallet", () => {
   beforeEach(() => {
@@ -47,8 +70,12 @@ describe("useWallet", () => {
     mockGetAddress.mockReset();
     mockGetNetwork.mockReset();
     mockRequestAccess.mockReset();
+    mockSignTransaction.mockReset();
     mockOnAccountChange.mockReset();
     mockOnNetworkChange.mockReset();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    delete window.lobstrSignerExtension;
   });
 
   it("reports unavailable when the extension is not installed", async () => {
@@ -377,6 +404,154 @@ describe("useWallet", () => {
 
       expect(result.current.address).toBe(DEMO_WALLET_ADDRESS);
       expect(mockIsConnected).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("wallet adapters (#736)", () => {
+    it("defaults to the Freighter adapter", async () => {
+      mockIsConnected.mockResolvedValue({ isConnected: false });
+
+      const { result } = renderHook(() => useWallet());
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+
+      expect(result.current.walletId).toBe("freighter");
+      expect(result.current.walletName).toBe("Freighter");
+      expect(result.current.walletInstallUrl).toBe("https://www.freighter.app/");
+    });
+
+    it("restores the wallet remembered for this browser", async () => {
+      window.localStorage.setItem(SELECTION_KEY, "lobstr");
+      window.lobstrSignerExtension = true;
+      mockIsConnected.mockResolvedValue({ isConnected: false });
+
+      const { result } = renderHook(() => useWallet());
+
+      await waitFor(() => expect(result.current.walletId).toBe("lobstr"));
+      await waitFor(() => expect(result.current.status).toBe("disconnected"));
+      expect(result.current.walletName).toBe("LOBSTR");
+      expect(result.current.walletInstallUrl).toBe(
+        "https://lobstr.co/signer-extension"
+      );
+      expect(mockIsConnected).not.toHaveBeenCalled();
+    });
+
+    it("selectWallet switches adapters and persists the choice", async () => {
+      mockIsConnected.mockResolvedValue({ isConnected: false });
+
+      const { result } = renderHook(() => useWallet());
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+      expect(mockIsConnected).toHaveBeenCalledTimes(1);
+
+      window.lobstrSignerExtension = true;
+      act(() => {
+        result.current.selectWallet("lobstr");
+      });
+
+      await waitFor(() => expect(result.current.status).toBe("disconnected"));
+      expect(result.current.walletId).toBe("lobstr");
+      expect(window.localStorage.getItem(SELECTION_KEY)).toBe("lobstr");
+      expect(mockIsConnected).toHaveBeenCalledTimes(1);
+    });
+
+    it("connect(id) switches to the chosen wallet and remembers it", async () => {
+      mockIsConnected.mockResolvedValue({ isConnected: false });
+      answerLobstrProbe(false);
+
+      const { result } = renderHook(() => useWallet());
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+
+      let connected: boolean | undefined;
+      await act(async () => {
+        connected = await result.current.connect("lobstr");
+      });
+
+      expect(connected).toBe(false);
+      expect(window.localStorage.getItem(SELECTION_KEY)).toBe("lobstr");
+      expect(result.current.walletId).toBe("lobstr");
+      // The adapter switch re-probes LOBSTR, which reports itself missing.
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    });
+
+    it("reports why connect failed when the extension is missing", async () => {
+      window.localStorage.setItem(SELECTION_KEY, "lobstr");
+      answerLobstrProbe(false);
+
+      const { result } = renderHook(() => useWallet());
+      await waitFor(() => expect(result.current.walletId).toBe("lobstr"));
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+
+      let connected: boolean | undefined;
+      await act(async () => {
+        connected = await result.current.connect();
+      });
+
+      expect(connected).toBe(false);
+      expect(result.current.status).toBe("unavailable");
+      expect(result.current.error).toBe(
+        "LOBSTR extension not found. Install it to connect your wallet."
+      );
+    });
+
+    it("connect() resolves true once the adapter authorizes", async () => {
+      mockIsConnected.mockResolvedValue({ isConnected: false });
+      const { result } = renderHook(() => useWallet());
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+
+      mockRequestAccess.mockResolvedValue({ address: "GXYZ789" });
+      mockGetNetwork.mockResolvedValue({
+        network: "TESTNET",
+        networkPassphrase: "Test SDF Network ; September 2015",
+      });
+
+      let connected: boolean | undefined;
+      await act(async () => {
+        connected = await result.current.connect();
+      });
+
+      expect(connected).toBe(true);
+      expect(result.current.status).toBe("connected");
+      expect(result.current.address).toBe("GXYZ789");
+    });
+  });
+
+  describe("signTransaction", () => {
+    it("signs through the active adapter", async () => {
+      mockIsConnected.mockResolvedValue({ isConnected: true });
+      mockIsAllowed.mockResolvedValue({ isAllowed: true });
+      mockGetAddress.mockResolvedValue({ address: "GABC123" });
+      mockGetNetwork.mockResolvedValue({
+        network: "TESTNET",
+        networkPassphrase: "Test SDF Network ; September 2015",
+      });
+      mockSignTransaction.mockResolvedValue({
+        signedTxXdr: "AAAA-SIGNED",
+        error: null,
+      });
+
+      const { result } = renderHook(() => useWallet());
+      await waitFor(() => expect(result.current.status).toBe("connected"));
+
+      let signed: string | undefined;
+      await act(async () => {
+        signed = await result.current.signTransaction("xdr-blob");
+      });
+
+      expect(signed).toBe("AAAA-SIGNED");
+      expect(mockSignTransaction).toHaveBeenCalledWith("xdr-blob", {
+        address: "GABC123",
+        networkPassphrase: "Test SDF Network ; September 2015",
+      });
+    });
+
+    it("refuses to sign while demo mode is active", async () => {
+      enableDemoMode();
+      const { result } = renderHook(() => useWallet());
+      await waitFor(() => expect(result.current.status).toBe("connected"));
+
+      await expect(
+        result.current.signTransaction("xdr-blob")
+      ).rejects.toThrow(/read-only demo/);
+      expect(mockSignTransaction).not.toHaveBeenCalled();
     });
   });
 });

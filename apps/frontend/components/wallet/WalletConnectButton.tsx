@@ -1,7 +1,11 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { Button } from "@delegolabs/ui";
 import { useWallet } from "../../hooks/useWallet";
+import type { WalletHandle } from "../../hooks/useWallet";
+import type { WalletId } from "../../lib/wallet";
+import { WalletPickerModal } from "./WalletPicker";
 
 function truncateAddress(address: string): string {
   if (address.length <= 12) return address;
@@ -11,38 +15,50 @@ function truncateAddress(address: string): string {
 export interface WalletConnectButtonProps {
   /** Show the connected address and network alongside the button (default: true) */
   showDetails?: boolean;
+  /**
+   * Reuse an existing wallet instance (the wallet page owns one so its status
+   * card, picker, and this button always agree). Defaults to a private instance.
+   */
+  wallet?: WalletHandle;
 }
 
 /**
- * Connect/disconnect control for the Freighter browser wallet.
+ * Connect/disconnect control for the selected Stellar wallet adapter.
  * Reusable in the header, dashboard, and the dedicated wallet page.
+ * Connecting always goes through the wallet picker, which links to the
+ * install page for any extension that is not installed yet.
  */
 export function WalletConnectButton({
   showDetails = true,
+  wallet: sharedWallet,
 }: WalletConnectButtonProps) {
-  const { status, address, network, error, connect, disconnect } = useWallet();
+  const ownWallet = useWallet();
+  const {
+    status,
+    address,
+    network,
+    error,
+    connect,
+    disconnect,
+    walletId,
+    walletName,
+    walletInstallUrl,
+  } = sharedWallet ?? ownWallet;
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const handleConnect = useCallback(
+    async (id: WalletId) => {
+      const connected = await connect(id);
+      if (connected) setPickerOpen(false);
+      return connected;
+    },
+    [connect]
+  );
 
   if (status === "checking") {
     return (
       <Button variant="secondary" disabled>
         Checking wallet…
-      </Button>
-    );
-  }
-
-  if (status === "unavailable") {
-    return (
-      <Button
-        variant="secondary"
-        onClick={() =>
-          window.open(
-            "https://www.freighter.app/",
-            "_blank",
-            "noopener,noreferrer"
-          )
-        }
-      >
-        Install Freighter
       </Button>
     );
   }
@@ -69,18 +85,39 @@ export function WalletConnectButton({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-      <Button
-        variant="primary"
-        onClick={connect}
-        disabled={status === "connecting"}
-      >
-        {status === "connecting" ? "Connecting…" : "Connect Wallet"}
-      </Button>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <Button
+          variant="primary"
+          onClick={() => setPickerOpen(true)}
+          disabled={status === "connecting"}
+        >
+          {status === "connecting" ? "Connecting…" : "Connect Wallet"}
+        </Button>
+        {status === "unavailable" && (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              window.open(walletInstallUrl, "_blank", "noopener,noreferrer")
+            }
+          >
+            Install {walletName}
+          </Button>
+        )}
+      </div>
       {status === "error" && error && (
         <span className="wallet-error" role="alert">
           {error}
         </span>
       )}
+      <WalletPickerModal
+        isOpen={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onConnect={handleConnect}
+        connecting={status === "connecting"}
+        selectedId={walletId}
+        connectedId={status === "connected" ? walletId : null}
+        error={status === "error" ? error : null}
+      />
     </div>
   );
 }
