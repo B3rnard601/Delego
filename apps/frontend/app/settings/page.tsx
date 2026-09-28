@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { User, UserPreferences } from "@delegolabs/types";
+import { Button } from "@delegolabs/ui";
 import {
   ProfileForm,
   type ProfileFormValues,
@@ -16,6 +18,7 @@ import { DataSaverSettingsCard } from "../../components/settings/DataSaverSettin
 import { LanguageSwitcher } from "../../components/settings/LanguageSwitcher";
 import { CurrencySwitcher } from "../../components/settings/CurrencySwitcher";
 import { TimeFormatSwitcher } from "../../components/settings/TimeFormatSwitcher";
+import { ChatAudioSettingsCard } from "../../components/settings/ChatAudioSettingsCard";
 import { NetworkContractsCard } from "../../components/settings/NetworkContractsCard";
 import { OfflineDataCard } from "../../components/settings/OfflineDataCard";
 import { PrivacyExportCard } from "../../components/settings/PrivacyExportCard";
@@ -101,9 +104,15 @@ export default function SettingsPage() {
       <LanguageSwitcher />
       <CurrencySwitcher />
       <TimeFormatSwitcher />
+      <ChatAudioSettingsCard />
       <NetworkContractsCard />
       <AgentSettingsCard config={PLACEHOLDER_AGENT_CONFIG} />
       <MerchantWebhookCard />
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <Link href="/settings/webhooks/logs" prefetch={true}>
+          <Button variant="secondary">View webhook activity</Button>
+        </Link>
+      </div>
       <ConsentSettingsCard />
       <PrivacyExportCard user={user} preferences={preferences} />
       <DataErasureCard />
