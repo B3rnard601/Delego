@@ -9,6 +9,7 @@ import { useDispute } from "../../../hooks/useDispute";
 import { useNetwork } from "../../../hooks/useNetwork";
 import dynamic from "next/dynamic";
 import { EscrowCard } from "../../../components/escrows/EscrowCard";
+import { ConfirmDeliveryButton } from "../../../components/escrows/ConfirmDeliveryButton";
 import { DisputeModal } from "../../../components/escrows/DisputeModal";
 import { DisputeStatusPanel } from "../../../components/escrows/DisputeStatusPanel";
 import { ReleaseCTA } from "../../../components/escrows/ReleaseCTA";
@@ -109,6 +110,22 @@ export default function EscrowDetailPage() {
             await apiFetch(`/escrows/${escrowKey(e)}/release`, { method: "POST" });
           }}
         />
+        {/* Buyer 1-click delivery confirmation (#707) — only meaningful while
+            the funds are still held in escrow. */}
+        {escrow.status === "Funded" && (
+          <ConfirmDeliveryButton
+            escrow={escrow}
+            onRelease={async (payload) => {
+              await apiFetch(`/escrows/${payload.escrowId}/release`, {
+                method: "POST",
+                body: JSON.stringify({
+                  feedbackRating: payload.feedbackRating,
+                  satisfactionNote: payload.satisfactionNote,
+                }),
+              });
+            }}
+          />
+        )}
         {showDisputeCta && (
           <Button variant="secondary" onClick={() => setShowDisputeModal(true)}>
             Open dispute
