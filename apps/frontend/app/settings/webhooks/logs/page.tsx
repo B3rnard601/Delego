@@ -21,18 +21,16 @@ export default function WebhookLogsPage() {
   const [logs, setLogs] = useState<WebhookDeliveryLog[] | undefined>(undefined);
 
   const handleRetry = useCallback(async (log: WebhookDeliveryLog) => {
-    const response = await fetch(log.targetUrl, {
+    const response = await fetch(log.endpointUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: log.requestBodySnippet,
+      body: log.requestPayload,
     });
     const retried = buildDeliveryLog({
       eventId: log.eventId,
-      eventType: log.eventType,
-      targetUrl: log.targetUrl,
-      statusCode: response.status,
-      durationMs: 0,
-      requestBody: log.requestBodySnippet,
+      endpointUrl: log.endpointUrl,
+      httpStatus: response.status,
+      requestPayload: log.requestPayload,
     });
     setLogs(recordWebhookDelivery(retried));
     if (!response.ok) {
