@@ -379,4 +379,73 @@ describe("useWallet", () => {
       expect(mockIsConnected).not.toHaveBeenCalled();
     });
   });
+
+  describe("multi-wallet selection (#774)", () => {
+    beforeEach(() => {
+      window.sessionStorage.clear();
+    });
+
+    it("defaults to Freighter and exposes all registered options", async () => {
+      mockIsConnected.mockResolvedValue({ isConnected: false });
+      const { result } = renderHook(() => useWallet());
+
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+      expect(result.current.walletId).toBe("freighter");
+      expect(result.current.walletOptions.map((o) => o.id).sort()).toEqual([
+        "albedo",
+        "freighter",
+        "lobstr",
+        "walletconnect",
+        "xbull",
+      ]);
+    });
+
+    it("persists the selected wallet across hook mounts", async () => {
+      mockIsConnected.mockResolvedValue({ isConnected: false });
+      const first = renderHook(() => useWallet());
+      await waitFor(() => expect(first.result.current.status).toBe("unavailable"));
+
+      act(() => {
+        first.result.current.selectWallet("xbull");
+      });
+      expect(first.result.current.walletId).toBe("xbull");
+      expect(window.sessionStorage.getItem("delego.activeWallet")).toBe("xbull");
+      first.unmount();
+
+      const second = renderHook(() => useWallet());
+      expect(second.result.current.walletId).toBe("xbull");
+      second.unmount();
+    });
+
+    it("surfaces a precise unavailable status for non-extension wallets", async () => {
+      mockIsConnected.mockResolvedValue({ isConnected: false });
+      const { result } = renderHook(() => useWallet());
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+
+      await act(async () => {
+        await result.current.connect("albedo");
+      });
+
+      expect(result.current.walletId).toBe("albedo");
+      expect(result.current.status).toBe("unavailable");
+      expect(result.current.error).toMatch(/Albedo/);
+      expect(mockRequestAccess).not.toHaveBeenCalled();
+    });
+
+    it("clears the persisted choice on disconnect", async () => {
+      mockIsConnected.mockResolvedValue({ isConnected: false });
+      const { result } = renderHook(() => useWallet());
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+
+      act(() => {
+        result.current.selectWallet("xbull");
+      });
+      expect(window.sessionStorage.getItem("delego.activeWallet")).toBe("xbull");
+
+      act(() => {
+        result.current.disconnect();
+      });
+      expect(window.sessionStorage.getItem("delego.activeWallet")).toBeNull();
+    });
+  });
 });
