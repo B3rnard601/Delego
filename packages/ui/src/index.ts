@@ -61,3 +61,4 @@ export {
   type PathPaymentEstimate,
 } from "./PathPaymentWidget.js";
 
+export { VerificationBadge, type VerificationBadgeProps } from "./VerificationBadge.js";
