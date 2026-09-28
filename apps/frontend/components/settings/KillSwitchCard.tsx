@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Button, Card } from "@delegolabs/ui";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { useNetwork } from "../../hooks/useNetwork";
@@ -42,8 +42,6 @@ export function KillSwitchCard() {
   const [notice, setNotice] = useState<string | null>(null);
   const [result, setResult] = useState<KillSwitchResult | null>(null);
 
-  useFocusTrap(panelRef, open);
-
   const close = useCallback(() => {
     if (running) return;
     setOpen(false);
@@ -52,14 +50,7 @@ export function KillSwitchCard() {
     setError(null);
   }, [running]);
 
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") close();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, close]);
+  useFocusTrap({ containerRef: panelRef, isActive: open, onEscape: close });
 
   const payload: KillSwitchPayload | null = address
     ? {
