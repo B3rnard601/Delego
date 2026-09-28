@@ -61,3 +61,4 @@ export {
   type PathPaymentEstimate,
 } from "./PathPaymentWidget.js";
 
+export * from './InteractiveTrackingTimeline.js';
