@@ -44,7 +44,7 @@ export {
 export {
   AgentTraceViewer,
   type AgentTraceViewerProps,
-  type AgentExecutionStep,
+  type AgentThoughtStep,
 } from "./AgentTraceViewer.js";
 export {
   PromptChipsBar,
