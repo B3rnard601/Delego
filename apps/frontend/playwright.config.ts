@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+/** Port the E2E gateway stand-in (e2e/support/mock-gateway.mjs) listens on. */
+const MOCK_GATEWAY_PORT = Number(process.env.MOCK_GATEWAY_PORT ?? 3456);
+
 /**
  * `grepInvert` pattern naming every quarantined test (#630).
  *
@@ -73,12 +76,28 @@ export default defineConfig({
       use: { ...devices["Pixel 7"] },
     },
   ],
+  /**
+   * Two servers (#804). Playwright only intercepts browser traffic, so the
+   * gateway calls made from Node during SSR (the merchant storefront in
+   * app/store/[merchantId]/page.tsx) need a real origin to talk to — the
+   * mock gateway. Everything the browser itself fetches is still stubbed by
+   * e2e/support/mockApi.ts. Both servers are skipped when the suite runs
+   * against an already-deployed PLAYWRIGHT_BASE_URL.
+   */
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
-    : {
-        command: "pnpm start",
-        port: 3001,
-        reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
-      },
+    : [
+        {
+          command: "node e2e/support/mock-gateway.mjs",
+          port: MOCK_GATEWAY_PORT,
+          reuseExistingServer: !process.env.CI,
+          timeout: 30_000,
+        },
+        {
+          command: "pnpm start",
+          port: 3001,
+          reuseExistingServer: !process.env.CI,
+          timeout: 120_000,
+        },
+      ],
 });
