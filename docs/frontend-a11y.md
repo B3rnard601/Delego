@@ -55,6 +55,58 @@ Message conventions:
 `AppProviders.tsx` and renders two `aria-live` regions (`polite` and
 `assertive`), visually hidden via the `.sr-only` utility class.
 
+## Streaming agent messages
+
+`useAnnounce` is for discrete events. It must **not** be used for streamed
+agent text: feeding it every token makes the live region change dozens of
+times per second, and NVDA/JAWS/ VoiceOver respond by abandoning whatever
+they are speaking and restarting. A long agent reply is heard as a series of
+clipped fragments, which is the failure reported in #772.
+
+Use [`useStreamingAnnouncer`](../apps/frontend/hooks/useStreamingAnnouncer.tsx)
+instead. It buffers tokens and exposes only the sentences that are safe to
+speak:
+
+```tsx
+const { announcement, appendToken, flush, announceNow, isStreaming } =
+  useStreamingAnnouncer();
+
+for await (const token of stream) appendToken(token);
+flush(); // announces any trailing partial sentence
+
+return <StreamingAnnouncerRegion announcement={announcement} />;
+```
+
+How it satisfies the acceptance criteria:
+
+- **Only complete sentences are announced.** Partial text stays buffered, so a
+  clause is never spoken before it is finished.
+- **Sentences are paced.** Each completed sentence is held for
+  `DEFAULT_ANNOUNCE_INTERVAL_MS` (700ms — roughly one sentence of comfortable
+  speech) before the next is published, so announcements queue behind the
+  reader instead of cutting it off. The queue is capped at 20; overflow drops
+  the oldest, which is what the reader would have skipped anyway.
+- **Boundary detection is not naive.** `streamingSentences.ts` declines to
+  split on decimals (`3.5 XLM`), abbreviations (`Dr.`, `Acme Inc.`), initials
+  (`J. R. Doyle`), or a period followed by a lowercase word. A reply with no
+  punctuation at all is force-split at 320 characters so it still gets spoken.
+- **Discrete UI events bypass the buffer.** `announceNow("Proposal ready to
+  review.")` is for things that are not part of the spoken text — a proposal
+  card appearing, a checkout action becoming available.
+
+Two rules for the live region itself:
+
+1. **Mount it empty and leave it mounted.** Screen readers ignore a live
+   region inserted into the DOM at the same moment its content appears. The
+   hook's first publish is delayed by a blank pass for exactly this reason.
+2. **`aria-atomic` is `true` and `aria-relevant` is `additions text`** because
+   the region holds exactly one sentence at a time. Accumulating every
+   sentence into one log with `aria-atomic="false"` — the approach originally
+   sketched in #772 — only works if the reader finishes each utterance before
+   the next arrives, which cannot be guaranteed. Publishing discrete,
+   fully-spoken sentences into an atomic region behaves consistently across
+   NVDA, JAWS and VoiceOver.
+
 ## CI a11y gate
 
 `apps/frontend/e2e/a11y.spec.ts` runs `@axe-core/playwright` against every
