@@ -3684,6 +3684,17 @@ body {
   font-size: 0.8125rem;
 }
 
+/* ── Return label barcode (#796) ─────────────────────────────────── */
+.return-label-barcode {
+  width: 100%;
+  max-height: 6rem;
+  object-fit: contain;
+  background: #fff;
+}
+.return-label-rma {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+}
 /* ── Voice input mic button / agent chat drawer (#800) ───────────── */
 .voice-input-button {
   position: relative;
