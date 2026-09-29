@@ -31,7 +31,7 @@
     "@delegolabs/api-generated": "workspace:*",
     "@delegolabs/sdk": "workspace:*",
     "@delegolabs/types": "workspace:*",
-    "@delegolabs/ui": "workspace:*",
+    "framer-motion": "^11.11.17",    "@delegolabs/ui": "workspace:*",
     "@tanstack/react-virtual": "^3.10.9",
     "@sentry/nextjs": "^8.47.0",
     "@stellar/freighter-api": "^6.0.1",
