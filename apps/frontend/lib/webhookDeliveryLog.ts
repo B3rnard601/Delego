@@ -1,23 +1,14 @@
 /**
  * Webhook activity / delivery log viewer data layer (#725).
- *
- * There is no gateway endpoint that lists past deliveries yet, so the log is
- * persisted client-side in `localStorage` — the same pattern as
- * `lib/merchantWebhooks.ts`. `TODO`: replace the storage helpers with
- * `GET /webhooks/deliveries` once the gateway exposes it; the exported
- * `WebhookDeliveryLog` shape is already the one the API should return.
  */
 
 export interface WebhookDeliveryLog {
-  id: string;
   eventId: string;
-  eventType: string;
-  targetUrl: string;
-  statusCode: number;
-  durationMs: number;
-  deliveredAt: string;
-  /** Truncated copy of the request body, for "what did we actually send?". */
-  requestBodySnippet: string;
+  endpointUrl: string;
+  httpStatus: number;
+  deliveredAt: Date;
+  requestPayload: string;
+  responseBody?: string;
 }
 
 export const WEBHOOK_LOG_STORAGE_KEY = "delego_webhook_delivery_logs";
@@ -68,7 +59,6 @@ export function statusLabel(statusCode: number): string {
   return `${statusCode} Failed`;
 }
 
-/** "412 ms" / "1.42 s" — compact, for a narrow table cell. */
 export function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) return "—";
   if (durationMs < 1000) return `${Math.round(durationMs)} ms`;
@@ -77,11 +67,6 @@ export function formatDuration(durationMs: number): string {
 
 // ─── Payload snippet ─────────────────────────────────────────────────────────
 
-/**
- * Truncates a request body to a single-line, length-capped preview. Control
- * characters are escaped so a log table can never be broken (or spoofed) by
- * a payload containing newlines or ANSI escapes.
- */
 export function buildRequestBodySnippet(
   body: string,
   maxLength: number = SNIPPET_MAX_LENGTH
@@ -97,33 +82,22 @@ export function buildRequestBodySnippet(
 
 export interface BuildDeliveryLogInput {
   eventId: string;
-  eventType: string;
-  targetUrl: string;
-  statusCode: number;
-  durationMs: number;
-  requestBody: string;
-  deliveredAt?: string;
-  id?: string;
-}
-
-function randomId(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  endpointUrl: string;
+  httpStatus: number;
+  requestPayload: string;
+  responseBody?: string;
+  deliveredAt?: Date;
 }
 
 /** Normalises a raw delivery into a `WebhookDeliveryLog`. */
 export function buildDeliveryLog(input: BuildDeliveryLogInput): WebhookDeliveryLog {
   return {
-    id: input.id ?? `whd_${randomId()}`,
     eventId: input.eventId,
-    eventType: input.eventType,
-    targetUrl: input.targetUrl,
-    statusCode: input.statusCode,
-    durationMs: input.durationMs,
-    deliveredAt: input.deliveredAt ?? new Date().toISOString(),
-    requestBodySnippet: buildRequestBodySnippet(input.requestBody),
+    endpointUrl: input.endpointUrl,
+    httpStatus: input.httpStatus,
+    deliveredAt: input.deliveredAt ?? new Date(),
+    requestPayload: buildRequestBodySnippet(input.requestPayload),
+    responseBody: input.responseBody,
   };
 }
 
@@ -133,14 +107,11 @@ function isLogShape(value: unknown): value is WebhookDeliveryLog {
   if (!value || typeof value !== "object") return false;
   const log = value as Record<string, unknown>;
   return (
-    typeof log.id === "string" &&
     typeof log.eventId === "string" &&
-    typeof log.eventType === "string" &&
-    typeof log.targetUrl === "string" &&
-    typeof log.statusCode === "number" &&
-    typeof log.durationMs === "number" &&
-    typeof log.deliveredAt === "string" &&
-    typeof log.requestBodySnippet === "string"
+    typeof log.endpointUrl === "string" &&
+    typeof log.httpStatus === "number" &&
+    (typeof log.deliveredAt === "string" || log.deliveredAt instanceof Date) &&
+    typeof log.requestPayload === "string"
   );
 }
 
@@ -151,7 +122,10 @@ export function loadWebhookDeliveryLogs(): WebhookDeliveryLog[] {
     if (!stored) return [];
     const parsed: unknown = JSON.parse(stored);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isLogShape).slice(0, MAX_DELIVERY_LOGS);
+    return parsed.filter(isLogShape).map(log => ({
+      ...log,
+      deliveredAt: new Date(log.deliveredAt as string | Date)
+    })).slice(0, MAX_DELIVERY_LOGS);
   } catch {
     return [];
   }
@@ -200,12 +174,12 @@ export function filterDeliveryLogs(
 ): WebhookDeliveryLog[] {
   const search = filters.search?.trim().toLowerCase();
   return [...logs]
-    .sort((a, b) => (a.deliveredAt < b.deliveredAt ? 1 : a.deliveredAt > b.deliveredAt ? -1 : 0))
+    .sort((a, b) => b.deliveredAt.getTime() - a.deliveredAt.getTime())
     .filter((log) => {
-      if (filters.outcome === "success" && !isSuccessfulStatus(log.statusCode)) return false;
-      if (filters.outcome === "error" && isSuccessfulStatus(log.statusCode)) return false;
+      if (filters.outcome === "success" && !isSuccessfulStatus(log.httpStatus)) return false;
+      if (filters.outcome === "error" && isSuccessfulStatus(log.httpStatus)) return false;
       if (!search) return true;
-      return [log.id, log.eventId, log.eventType, log.targetUrl]
+      return [log.eventId, log.endpointUrl]
         .join(" ")
         .toLowerCase()
         .includes(search);
@@ -216,20 +190,17 @@ export interface DeliveryLogSummary {
   total: number;
   succeeded: number;
   failed: number;
-  /** Mean duration across every delivery, 0 when the log is empty. */
   averageDurationMs: number;
 }
 
 export function summarizeDeliveryLogs(
   logs: WebhookDeliveryLog[]
 ): DeliveryLogSummary {
-  const succeeded = logs.filter((log) => isSuccessfulStatus(log.statusCode)).length;
-  const durationTotal = logs.reduce((sum, log) => sum + (log.durationMs || 0), 0);
+  const succeeded = logs.filter((log) => isSuccessfulStatus(log.httpStatus)).length;
   return {
     total: logs.length,
     succeeded,
     failed: logs.length - succeeded,
-    averageDurationMs:
-      logs.length === 0 ? 0 : Math.round(durationTotal / logs.length),
+    averageDurationMs: 0,
   };
 }
